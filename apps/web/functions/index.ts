@@ -304,7 +304,6 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({state,cached:false});
  }
  if (resource === 'state' && request.method === 'PUT') {
-  if (!canEdit(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   if (!body || !Object.prototype.hasOwnProperty.call(body,'state')) return reply({error:'State is required'},400);
   const value=JSON.stringify(body.state); if(value.length>256000) return reply({error:'State too large'},413);
