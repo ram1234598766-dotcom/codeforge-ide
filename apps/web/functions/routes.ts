@@ -1,10 +1,10 @@
-export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' } | null;
+export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' } | null;
 
 export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   const path = pathname.replace(/\/$/, '');
-  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites))?$/i);
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites|search))?$/i);
   if (!match) return null;
-  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | undefined };
+  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' | undefined };
 }
 
 export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;
@@ -21,6 +21,17 @@ export function validateCodeChange(path: unknown, content: unknown): string | nu
   if (pathError) return pathError;
   if (typeof content !== 'string') return 'Proposed content must be text.';
   if (new TextEncoder().encode(content).byteLength > 1_000_000) return 'Proposed content must be 1 MB or smaller.';
+  return null;
+}
+
+export type WorkspaceSearchMode = 'all' | 'content' | 'path';
+
+export function validateWorkspaceSearchQuery(query: unknown, mode: unknown): string | null {
+  if (typeof query !== 'string') return 'Search query must be text.';
+  const value = query.trim();
+  if (value.length < 2) return 'Enter at least 2 characters to search.';
+  if (value.length > 120) return 'Search query must be 120 characters or fewer.';
+  if (mode !== 'all' && mode !== 'content' && mode !== 'path') return 'Search mode must be all, content, or path.';
   return null;
 }
 
