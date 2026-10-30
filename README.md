@@ -77,6 +77,13 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 
 Workers AI requests are usage-based and may incur Cloudflare charges. Agent responses are suggestions: they do not directly edit files, execute shell commands, or deploy code.
 
+## Desktop and mobile shells
+
+- **Desktop:** Tauri 2 shell at `apps/desktop`, loading the hosted Worker website in a native window. No local filesystem or shell permissions are granted yet.
+- **Mobile:** Expo SDK 58 / React Native 0.88 shell at `apps/mobile`, loading the responsive hosted website in a WebView. Native offline editor, notifications, and app-store signing are not yet implemented.
+
+Build commands: `pnpm build:desktop` and `pnpm build:mobile`. The `Native shells CI` workflow validates both projects.
+
 ## Still to build
 
 - Encrypted per-user BYOK model-key vault and additional model providers
