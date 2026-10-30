@@ -317,7 +317,7 @@ async function api(request: Request, env: Env): Promise<Response> {
    const pathMatched = file.path.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
    const hits:Array<{line:number;text:string}> = [];
    if (mode !== 'path') {
-    for (const [index,line] of file.content.split('\\n').entries()) {
+    for (const [index,line] of file.content.split('\n').entries()) {
      if (line.toLocaleLowerCase().includes(normalized.toLocaleLowerCase())) {
       hits.push({line:index+1,text:line.trim().slice(0,320)});
       if (hits.length >= 5) break;
