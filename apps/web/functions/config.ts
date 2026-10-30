@@ -1,3 +1,5 @@
+import { isSupabasePublishableKey } from '../src/lib/supabase-config';
+
 export interface SupabaseConfigBindings {
   SUPABASE_URL?: string;
   VITE_SUPABASE_URL?: string;
@@ -15,25 +17,8 @@ function normalizeProjectUrl(value: string | undefined): string {
   return trimmed.replace(/\/rest\/v1$/i, '');
 }
 
-export function isPublishableSupabaseKey(value: unknown): value is string {
-  if (typeof value !== 'string') return false;
-  const key = value.trim();
-  if (!key) return false;
-
-  // New Supabase browser-safe publishable key format.
-  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return true;
-
-  // Legacy anon keys are JWTs. Only expose one whose role is explicitly "anon".
-  const parts = key.split('.');
-  if (parts.length !== 3 || !parts[1]) return false;
-  try {
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')));
-    return payload?.role === 'anon';
-  } catch {
-    return false;
-  }
-}
+// Preserve the Worker configuration API while sharing validation with the browser.
+export const isPublishableSupabaseKey = isSupabasePublishableKey;
 
 export function getPublicSupabaseConfig(env: SupabaseConfigBindings): PublicSupabaseConfig | null {
   const url = normalizeProjectUrl(env.SUPABASE_URL || env.VITE_SUPABASE_URL);

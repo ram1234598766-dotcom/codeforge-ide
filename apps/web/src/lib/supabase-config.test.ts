@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getSupabaseAuthOptions, getSupabaseRedirectUrl, resolveSupabaseConfig } from './supabase-config';
+import { getSupabaseAuthOptions, getSupabaseRedirectUrl, isSupabasePublishableKey, resolveSupabaseConfig } from './supabase-config';
 
 describe('resolveSupabaseConfig', () => {
   it('uses Worker runtime configuration when Vite build values are absent', () => {
@@ -73,5 +73,39 @@ describe('Supabase OAuth callback configuration', () => {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     });
+  });
+});
+
+
+describe('Supabase publishable key validation', () => {
+  const legacyKey = (role: string) => {
+    const payload = btoa(JSON.stringify({ iss: 'supabase', role }))
+      .replace(/=/g, '')
+      .replace(/=+$/g, '');
+    return `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`;
+  };
+
+  it('ignores the placeholder key from .env.example and falls back to Worker runtime config', () => {
+    expect(resolveSupabaseConfig({
+      url: 'https://project.supabase.co',
+      publishableKey: 'your-supabase-publishable-key',
+    }, {
+      url: 'https://project.supabase.co',
+      publishableKey: 'sb_publishable_runtime-key',
+    })).toEqual({
+      url: 'https://project.supabase.co',
+      publishableKey: 'sb_publishable_runtime-key',
+      configured: true,
+    });
+  });
+
+  it('accepts modern publishable keys and legacy anon keys', () => {
+    expect(isSupabasePublishableKey('sb_publishable_runtime-key')).toBe(true);
+    expect(isSupabasePublishableKey(legacyKey('anon'))).toBe(true);
+  });
+
+  it('rejects service-role JWTs and arbitrary non-empty text', () => {
+    expect(isSupabasePublishableKey(legacyKey('service_role'))).toBe(false);
+    expect(isSupabasePublishableKey('your-supabase-publishable-key')).toBe(false);
   });
 });
