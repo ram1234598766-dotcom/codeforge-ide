@@ -1,3 +1,7 @@
+# Cloudflare Pages Configuration (Static Site)
+# Do NOT use `npx wrangler deploy` in the build pipeline for Pages.
+# Pages automatically deploys the `pages_build_output_dir` after `npm run build`.
+
 name = "codeforge-ide"
 compatibility_date = "2026-10-30"
 
