@@ -128,3 +128,24 @@ export async function deleteProviderConfig(provider: ProviderId): Promise<void> 
     body: JSON.stringify({ provider }),
   });
 }
+
+export type FileVersion = {
+  id: string;
+  path: string;
+  content: string;
+  language: string | null;
+  created_at: string;
+};
+
+export async function listFileVersions(workspaceId: string, path: string): Promise<FileVersion[]> {
+  const result = await apiRequest<{ versions: FileVersion[] }>(`/api/workspaces/${workspaceId}/versions?path=${encodeURIComponent(path)}`);
+  return result.versions;
+}
+
+export async function restoreFileVersion(workspaceId: string, versionId: string): Promise<{ path: string; content: string; language: string | null }> {
+  const result = await apiRequest<{ ok: boolean; path: string; content: string; language: string | null }>(`/api/workspaces/${workspaceId}/versions`, {
+    method: 'POST',
+    body: JSON.stringify({ versionId }),
+  });
+  return result;
+}
