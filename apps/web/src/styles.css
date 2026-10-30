@@ -116,3 +116,9 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 .reject-change{border:1px solid #62434a;background:#25171b;color:#ffb7c0}
 .approve-change{border:1px solid #3e7957;background:#153321;color:#b7f3cb}
 .change-review-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+
+.agent-code-proposals{display:grid;gap:6px;padding:9px;margin-top:8px;border-top:1px solid #2a3945;background:#101820}
+.agent-code-proposals>b{font:9px 'DM Mono';letter-spacing:.7px;color:#a2efbf}
+.agent-code-proposals button{display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid #345440;border-radius:5px;background:#14231b;color:#c6f3d4;text-align:left;font-size:10px}
+.agent-code-proposals button:disabled{opacity:.5;cursor:not-allowed}
