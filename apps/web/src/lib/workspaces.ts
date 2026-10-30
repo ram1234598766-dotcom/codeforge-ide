@@ -235,3 +235,20 @@ export async function approveCodeChange(workspaceId: string, changeId: string): 
 export async function rejectCodeChange(workspaceId: string, changeId: string): Promise<void> {
   await apiRequest<{ ok: boolean }>(`/api/workspaces/${workspaceId}/changes/${changeId}/reject`, { method: 'POST' });
 }
+
+
+export type WorkspaceSearchMode = 'all' | 'content' | 'path';
+export type WorkspaceSearchHit = { line: number; text: string };
+export type WorkspaceSearchResult = { path: string; matches: number; hits: WorkspaceSearchHit[] };
+
+export async function searchWorkspaceFiles(
+  workspaceId: string,
+  query: string,
+  mode: WorkspaceSearchMode = 'all',
+): Promise<WorkspaceSearchResult[]> {
+  const params = new URLSearchParams({ q: query, mode });
+  const result = await apiRequest<{ results: WorkspaceSearchResult[] }>(
+    `/api/workspaces/${workspaceId}/search?${params.toString()}`,
+  );
+  return result.results;
+}
