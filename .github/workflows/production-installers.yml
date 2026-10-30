@@ -37,14 +37,28 @@ jobs:
       - name: Build Windows NSIS installer
         working-directory: apps/desktop
         run: npx tauri build --bundles nsis
-      - name: Stage installer
+      - name: Sign with a generated self-signed certificate
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $ErrorActionPreference = "Stop"
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=CodeForge Local Release" -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(3)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codeforge-signing.pfx"
+          $pfxPassword = ConvertTo-SecureString ([Guid]::NewGuid().ToString("N")) -AsPlainText -Force
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pfxPassword | Out-Null
           $installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw "Tauri did not produce a Windows NSIS installer." }
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
+          & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $pfxPassword.ConvertToPlainText() $installer.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }
+          Export-Certificate -Cert $cert -FilePath (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") | Out-Null
+          New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item $installer.FullName release/CodeForge-Setup-Windows.exe
+          Copy-Item (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") release/CodeForge-SelfSigned.cer
           Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256-Windows.txt
+          $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
+          if ($signature.Status -ne "Valid") { throw "Signed installer verification failed: $($signature.Status)" }
+          Remove-Item $pfxPath -Force
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-windows-installer
@@ -70,19 +84,12 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
-      - name: Require persistent Android release signing identity
+      - name: Generate one-build Android signing identity
         shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "::error::Missing ANDROID_KEYSTORE_BASE64 repository secret."; exit 1; }
-          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "::error::Missing ANDROID_KEYSTORE_PASSWORD repository secret."; exit 1; }
-          test -n "$ANDROID_KEY_ALIAS" || { echo "::error::Missing ANDROID_KEY_ALIAS repository secret."; exit 1; }
-          test -n "$ANDROID_KEY_PASSWORD" || { echo "::error::Missing ANDROID_KEY_PASSWORD repository secret."; exit 1; }
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/codeforge-release.jks" -storepass "codeforge-build-only" -keypass "codeforge-build-only" -alias codeforge -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=CodeForge Build,O=CodeForge,C=IN"
+          echo "ANDROID_KEYSTORE=$RUNNER_TEMP/codeforge-release.jks" >> "$GITHUB_ENV"
       - name: Install Expo dependencies
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=false
@@ -98,33 +105,25 @@ jobs:
           ./gradlew --no-daemon --stacktrace :app:assembleRelease
       - name: Align, sign, and verify APK
         shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           APK="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK"
           mkdir -p release
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/codeforge-release.jks"
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/CodeForge-aligned.apk"
-          export KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
-          export KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
           "$SDK_BUILD_TOOLS/apksigner" sign \
-            --ks "$RUNNER_TEMP/codeforge-release.jks" \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --key-pass env:KEY_PASSWORD \
+            --ks "$ANDROID_KEYSTORE" \
+            --ks-key-alias codeforge \
+            --ks-pass pass:codeforge-build-only \
+            --key-pass pass:codeforge-build-only \
             --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
           sha256sum release/CodeForge.apk > release/SHA256-Android.txt
           printf 'PACKAGE=com.codeforge.ide\n' > release/BUILD-METADATA.txt
           printf 'VERSION=1.0.0\n' >> release/BUILD-METADATA.txt
-          printf 'SIGNING=persistent release keystore; signature verified\n' >> release/BUILD-METADATA.txt
-          rm -f "$RUNNER_TEMP/codeforge-release.jks" "$RUNNER_TEMP/CodeForge-aligned.apk"
+          printf 'SIGNING=one-build generated key; signature verified; future upgrades require uninstall/reinstall\n' >> release/BUILD-METADATA.txt
+          rm -f "$ANDROID_KEYSTORE" "$RUNNER_TEMP/CodeForge-aligned.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-android-apk
