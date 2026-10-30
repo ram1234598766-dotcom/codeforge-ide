@@ -4,15 +4,15 @@
   "version": "1.0.0",
   "identifier": "com.codeforge.ide",
   "build": {
-    "devUrl": "https://codeforge-ide.vasudevaya.workers.dev",
-    "frontendDist": "https://codeforge-ide.vasudevaya.workers.dev"
+    "devUrl": "https://codeforge-ide.vasudevaya.workers.dev/app",
+    "frontendDist": "https://codeforge-ide.vasudevaya.workers.dev/app"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "CodeForge",
-        "url": "https://codeforge-ide.vasudevaya.workers.dev",
+        "url": "https://codeforge-ide.vasudevaya.workers.dev/app",
         "width": 1440,
         "height": 900,
         "minWidth": 980,
