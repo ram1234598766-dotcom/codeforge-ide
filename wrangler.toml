@@ -8,45 +8,12 @@ compatibility_date = "2026-10-30"
 # Cloudflare Pages Output Directory
 pages_build_output_dir = "apps/web/dist"
 
-# D1 Database Binding (Replace <D1_DATABASE_ID> with your actual D1 ID)
-[[d1_databases]]
-binding = "CODEFORGE_DB"
-database_id = "<D1_DATABASE_ID>" # e.g., "12345678-1234-1234-1234-1234567890ab"
-database_name = "codeforge_d1"
-
-# KV Namespace Binding (Replace <KV_NAMESPACE_ID> with your actual KV ID)
-[[kv_namespaces]]
-binding = "CODEFORGE_KV"
-id = "<KV_NAMESPACE_ID>" # e.g., "abcdef1234567890abcdef1234567890"
-
 # Environment Variables for Build
 [vars]
 VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_a32yW-Ajq9KHgCDQoUBogg_yGOv3wXk"
 
-# Environment-specific overrides
-[env.production]
-[[env.production.d1_databases]]
-binding = "CODEFORGE_DB"
-database_id = "<D1_DATABASE_ID>"
-
-[[env.production.kv_namespaces]]
-binding = "CODEFORGE_KV"
-id = "<KV_NAMESPACE_ID>"
-
-[env.production.vars]
-VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_a32yW-Ajq9KHgCDQoUBogg_yGOv3wXk"
-
-[env.preview]
-[[env.preview.d1_databases]]
-binding = "CODEFORGE_DB"
-database_id = "<D1_DATABASE_ID>"
-
-[[env.preview.kv_namespaces]]
-binding = "CODEFORGE_KV"
-id = "<KV_NAMESPACE_ID>"
-
-[env.preview.vars]
-VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_a32yW-Ajq9KHgCDQoUBogg_yGOv3wXk"
+# D1 Database Binding (Replace <D1_DATABASE_ID> with your actual D1 ID)
+# KV Namespace Binding (Replace <KV_NAMESPACE_ID> with your actual KV ID)
+# Note: Bindings are configured in the Cloudflare Dashboard for Pages Functions.
+# For static build, we use environment variables above.
