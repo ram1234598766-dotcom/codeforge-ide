@@ -169,6 +169,7 @@ jobs:
           generate_release_notes: true
           files: |
             release/windows/CodeForge-Setup-Windows.exe
+            release/windows/CodeForge-SelfSigned.cer
             release/windows/SHA256-Windows.txt
             release/android/CodeForge.apk
             release/android/SHA256-Android.txt
