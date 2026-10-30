@@ -1,4 +1,5 @@
 import { getPublicSupabaseConfig } from './config';
+import { preventHtmlAssetCaching } from './assets';
 import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
@@ -411,6 +412,8 @@ async function api(request: Request, env: Env): Promise<Response> {
  return reply({error:'Method not allowed'},405);
 }
 export default { async fetch(request: Request, env: Env): Promise<Response> {
- if (new URL(request.url).pathname.startsWith('/api/')) { try { return await api(request,env); } catch (err) { console.error(err); return reply({error:'Internal server error'},500); } }
- return env.ASSETS.fetch(request);
+ const pathname = new URL(request.url).pathname;
+ if (pathname.startsWith('/api/')) { try { return await api(request,env); } catch (err) { console.error(err); return reply({error:'Internal server error'},500); } }
+ const asset = await env.ASSETS.fetch(request);
+ return preventHtmlAssetCaching(asset);
 }};
