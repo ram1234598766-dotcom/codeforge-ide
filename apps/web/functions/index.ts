@@ -205,7 +205,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const filePath=url.searchParams.get('path') || '';
   const pathError=validateWorkspaceFilePath(filePath);
   if(pathError) return reply({error:pathError},400);
-  const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at FROM workspace_file_versions WHERE workspace_id=? AND user_id=? AND path=? ORDER BY created_at DESC LIMIT 30').bind(id,userId,filePath.replace(/^\\/+/, '')).all();
+  const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at FROM workspace_file_versions WHERE workspace_id=? AND user_id=? AND path=? ORDER BY created_at DESC LIMIT 30').bind(id,userId,filePath.replace(/^\/+/, '')).all();
   return reply({versions:result.results || []});
  }
  if (resource === 'versions' && request.method === 'POST') {
