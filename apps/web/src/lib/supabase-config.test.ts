@@ -107,3 +107,33 @@ describe('Supabase publishable key validation', () => {
     expect(isSupabasePublishableKey('your-supabase-publishable-key')).toBe(false);
   });
 });
+
+
+describe('hosted-only browser entrypoint', () => {
+  it('moves localhost pages to production before authentication starts', () => {
+    expect(getHostedAppRedirectUrl('http://localhost:3000/projects?tab=files#editor'))
+      .toBe('https://codeforge-ide.vasudevaya.workers.dev/projects?tab=files#editor');
+  });
+
+  it('moves IPv4 and IPv6 loopback pages to production', () => {
+    expect(getHostedAppRedirectUrl('http://127.0.0.1:3000/'))
+      .toBe('https://codeforge-ide.vasudevaya.workers.dev/');
+    expect(getHostedAppRedirectUrl('http://[::1]:3000/'))
+      .toBe('https://codeforge-ide.vasudevaya.workers.dev/');
+  });
+
+  it('does not redirect an OAuth callback already holding a PKCE code', () => {
+    expect(getHostedAppRedirectUrl('http://localhost:3000/?code=one-time-code'))
+      .toBeNull();
+  });
+
+  it('does not redirect the canonical production host', () => {
+    expect(getHostedAppRedirectUrl('https://codeforge-ide.vasudevaya.workers.dev/'))
+      .toBeNull();
+  });
+
+  it('does not redirect other non-local development hosts', () => {
+    expect(getHostedAppRedirectUrl('https://preview.example.com/'))
+      .toBeNull();
+  });
+});
