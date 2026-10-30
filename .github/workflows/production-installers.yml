@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: codeforge-production-installers-${{ github.ref }}
+  group: codeforge-production-installers-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
