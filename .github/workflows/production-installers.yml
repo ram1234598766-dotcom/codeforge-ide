@@ -43,21 +43,29 @@ jobs:
           $ErrorActionPreference = "Stop"
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=CodeForge Local Release" -CertStoreLocation "Cert:\CurrentUser\My" -NotAfter (Get-Date).AddYears(3)
           $pfxPath = Join-Path $env:RUNNER_TEMP "codeforge-signing.pfx"
-          $pfxPassword = ConvertTo-SecureString ([Guid]::NewGuid().ToString("N")) -AsPlainText -Force
+          $pfxPasswordText = [Guid]::NewGuid().ToString("N")
+          $pfxPassword = ConvertTo-SecureString $pfxPasswordText -AsPlainText -Force
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pfxPassword | Out-Null
           $installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw "Tauri did not produce a Windows NSIS installer." }
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
-          & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $pfxPassword.ConvertToPlainText() $installer.FullName
+          & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $pfxPasswordText $installer.FullName
           if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }
           Export-Certificate -Cert $cert -FilePath (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") | Out-Null
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item $installer.FullName release/CodeForge-Setup-Windows.exe
-          Copy-Item (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") release/CodeForge-SelfSigned.cer
+          $certPath = Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer"
+          Export-Certificate -Cert $cert -FilePath $certPath | Out-Null
+          Import-Certificate -FilePath $certPath -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
+          Import-Certificate -FilePath $certPath -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
+          Copy-Item $certPath release/CodeForge-SelfSigned.cer
           Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256-Windows.txt
           $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
-          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint -or $signature.SignatureStatus -ne "Valid") { throw "Signed installer verification failed: $($signature.Status) / $($signature.SignatureStatus)" }
+          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint -or $signature.Status -ne "Valid") { throw "Signed installer verification failed: $($signature.Status)" }
+          Remove-Item "Cert:\CurrentUser\Root\$($cert.Thumbprint)" -Force -ErrorAction SilentlyContinue
+          Remove-Item "Cert:\CurrentUser\TrustedPublisher\$($cert.Thumbprint)" -Force -ErrorAction SilentlyContinue
+          Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force -ErrorAction SilentlyContinue
           Remove-Item $pfxPath -Force
       - uses: actions/upload-artifact@v4
         with:
