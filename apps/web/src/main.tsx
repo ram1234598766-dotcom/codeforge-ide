@@ -6,7 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, supabase, supabaseConfig } from './lib/supabase';
 import {
-  createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState,
+  createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState, getProfile, updateProfile, listWorkspaceMembers, createWorkspaceInvite, removeWorkspaceMember, acceptWorkspaceInvite,
   type Workspace,
   type FileVersion,
   listFileVersions,
@@ -15,6 +15,8 @@ import {
   type ActivityEvent,
   type ProviderId,
   type ProviderConfig,
+  type Profile,
+  type WorkspaceMember,
   listProviderConfigs,
   saveProviderConfig,
   testProviderConfig,
@@ -56,7 +58,7 @@ function AuthScreen() {
     setBusy(true); setError('');
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: window.location.href },
     });
     if (oauthError) { setError(oauthError.message); setBusy(false); }
   };
@@ -107,6 +109,13 @@ function App() {
   const [providerModel, setProviderModel] = useState('gpt-4.1-mini');
   const [providerApiKey, setProviderApiKey] = useState('');
   const [providerMessage, setProviderMessage] = useState('');
+  const [profileName, setProfileName] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'editor' | 'viewer'>('editor');
+  const [inviteUrl, setInviteUrl] = useState('');
+  const [workspaceMembers, setWorkspaceMembers] = useState<WorkspaceMember[]>([]);
+  const [collaborationMessage, setCollaborationMessage] = useState('');
   const [activity, setActivity] = useState('Ready to build');
   const [panel, setPanel] = useState<Panel>('explorer');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -156,23 +165,38 @@ function App() {
   useEffect(() => {
     if (!session) { setWorkspaces([]); setFiles([]); setWorkspaceId(''); setConnection(supabaseConfig.configured ? 'offline' : 'offline'); return; }
     setConnection('checking');
-    loadWorkspaces().then(() => { setConnection('connected'); setActivity('Workspace loaded'); }).catch(error => { setConnection('offline'); setNotice(error.message); });
+    const inviteToken = new URLSearchParams(window.location.search).get('invite');
+    const acceptPendingInvite = inviteToken
+      ? acceptWorkspaceInvite(inviteToken).then(() => { window.history.replaceState({}, '', window.location.pathname); setNotice('Workspace invitation accepted.'); })
+      : Promise.resolve();
+    acceptPendingInvite.then(() => loadWorkspaces()).then(() => { setConnection('connected'); setActivity('Workspace loaded'); }).catch(error => { setConnection('offline'); setNotice(error.message); });
   }, [session, loadWorkspaces]);
 
   useEffect(() => {
     if (!session) return;
     if (panel === 'agents') listAgentRuns().then(setAgentRuns).catch(error => setNotice(error.message));
     if (panel === 'activity') listActivity().then(setActivityEvents).catch(error => setNotice(error.message));
-    if (panel === 'settings') listProviderConfigs().then(configs => {
-      setProviderConfigs(configs);
-      if (configs.length && selectedProvider === 'workers-ai') setSelectedProvider(configs[0].provider);
-    }).catch(error => setProviderMessage(error.message));
+    if (panel === 'settings') {
+      listProviderConfigs().then(configs => {
+        setProviderConfigs(configs);
+        if (configs.length && selectedProvider === 'workers-ai') setSelectedProvider(configs[0].provider);
+      }).catch(error => setProviderMessage(error.message));
+      getProfile().then(profile => { setProfileName(profile.display_name || ''); setProfileAvatar(profile.avatar_url || ''); }).catch(error => setCollaborationMessage(error.message));
+      const active = workspaces.find(item => item.id === workspaceId);
+      if (workspaceId && (active?.role === 'owner' || active?.role === 'admin')) {
+        listWorkspaceMembers(workspaceId).then(setWorkspaceMembers).catch(error => setCollaborationMessage(error.message));
+      } else setWorkspaceMembers([]);
+    }
   }, [panel, session]);
 
+  const activeWorkspace = useMemo(() => workspaces.find(item => item.id === workspaceId), [workspaces, workspaceId]);
+  const canEditWorkspace = !activeWorkspace || activeWorkspace.role !== 'viewer';
+  const canAdminWorkspace = activeWorkspace?.role === 'owner' || activeWorkspace?.role === 'admin';
+  const isWorkspaceOwner = activeWorkspace?.role === 'owner';
   const selectedFile = useMemo(() => files.find(file => file.path === selectedPath), [files, selectedPath]);
   const dirty = content !== savedContent;
   const save = async () => {
-    if (!workspaceId || !selectedPath) return;
+    if (!workspaceId || !selectedPath || !canEditWorkspace) return;
     setBusy(true); setNotice('');
     try {
       await saveWorkspaceFile(workspaceId, selectedPath, content, languageFor(selectedPath));
@@ -216,6 +240,7 @@ function App() {
     }
   };
   const addFile = async () => {
+    if (!canEditWorkspace) return;
     if (dirty && !window.confirm('Discard unsaved changes?')) return;
     const path = window.prompt('New file path', 'src/new-file.ts');
     if (!path || !workspaceId) return;
@@ -282,6 +307,7 @@ function App() {
     finally { setBusy(false); }
   };
   const deleteFile = async (path: string) => {
+    if (!canEditWorkspace) return;
     if (!workspaceId || !window.confirm(`Delete ${path}?`)) return;
     setBusy(true);
     try {
@@ -397,6 +423,31 @@ function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not restore version.'); }
     finally { setBusy(false); }
   };
+  const saveProfile = async () => {
+    setBusy(true); setCollaborationMessage('');
+    try { await updateProfile(profileName, profileAvatar); setCollaborationMessage('Profile saved.'); }
+    catch (error) { setCollaborationMessage(error instanceof Error ? error.message : 'Could not save profile.'); }
+    finally { setBusy(false); }
+  };
+  const inviteMember = async () => {
+    if (!workspaceId || !inviteEmail.trim()) return;
+    setBusy(true); setCollaborationMessage('');
+    try {
+      const link = await createWorkspaceInvite(workspaceId, inviteEmail, inviteRole);
+      setInviteUrl(link); setCollaborationMessage('Invitation link created. It expires in 7 days.');
+    } catch (error) { setCollaborationMessage(error instanceof Error ? error.message : 'Could not create invitation.'); }
+    finally { setBusy(false); }
+  };
+  const removeMember = async (userId: string) => {
+    if (!workspaceId || !window.confirm('Remove this member from the workspace?')) return;
+    setBusy(true);
+    try {
+      await removeWorkspaceMember(workspaceId, userId);
+      setWorkspaceMembers(await listWorkspaceMembers(workspaceId));
+      setCollaborationMessage('Member removed.');
+    } catch (error) { setCollaborationMessage(error instanceof Error ? error.message : 'Could not remove member.'); }
+    finally { setBusy(false); }
+  };
   const signOut = async () => { await supabase?.auth.signOut(); };
   const panelTitle = panel === 'explorer' ? 'EXPLORER' : panel === 'source' ? 'SOURCE CONTROL' : panel === 'agents' ? 'AGENTS' : panel === 'terminal' ? 'TERMINAL' : panel === 'settings' ? 'SETTINGS' : 'ACTIVITY';
 
@@ -408,12 +459,12 @@ function App() {
     <header className="topbar">
       <button className="brand brand-button" onClick={() => setPanel('explorer')}><span className="mark"><Sparkles size={17}/></span><span>CodeForge</span><b>ALPHA</b></button>
       <select className="workspace-select" value={workspaceId} onChange={e => selectWorkspace(e.target.value)} aria-label="Workspace">{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={() => openHistory()} disabled={!selectedPath}><History size={14}/> History</button><button onClick={() => setPreviewOpen(value => !value)} disabled={!selectedPath.toLowerCase().endsWith('.html')}><Play size={14}/> Preview</button><button className="run" onClick={save} disabled={!dirty || busy}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
+      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={() => openHistory()} disabled={!selectedPath}><History size={14}/> History</button><button onClick={() => setPreviewOpen(value => !value)} disabled={!selectedPath.toLowerCase().endsWith('.html')}><Play size={14}/> Preview</button><button className="run" onClick={save} disabled={!dirty || busy || !canEditWorkspace}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
     </header>
     <section className="layout">
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity], ['settings', Settings2]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
-      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!workspaceId}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!workspaceId}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => openFile(file.path)}><span className="file-dot"/> {file.path}</button><button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button></div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : panel === 'agents' ? <div className="history-list">{agentRuns.length ? agentRuns.map(run => <button className="history-item" key={run.id} onClick={() => { try { setAgentOutput(JSON.parse(run.result_json || '{}').response || 'No response stored.'); } catch { setAgentOutput('Could not read this run result.'); } setActivity(run.agent_type + ' · ' + run.status); }}><span className="history-role">{run.agent_type} · {run.status}</span><strong>{run.task}</strong><small>{new Date(run.created_at).toLocaleString()}</small></button>) : <div className="panel-empty"><BrainCircuit size={18}/><strong>No agent runs yet</strong><span>Choose a role in the AI command center and send a task.</span></div>}</div> : panel === 'activity' ? <div className="history-list">{activityEvents.length ? activityEvents.map(event => <div className="history-item activity-item" key={event.id}><span className="history-role">{event.action}</span><small>{new Date(event.created_at).toLocaleString()}</small><code>{event.metadata_json}</code></div>) : <div className="panel-empty"><Activity size={18}/><strong>No activity yet</strong><span>Workspace, file, and agent actions will appear here.</span></div>}</div> : panel === 'settings' ? <div className="provider-settings"><h3>Model providers</h3><p>Use your own API key. Keys are AES-GCM encrypted in D1 and decrypted only inside the Worker.</p><label>Provider<select value={providerForm} onChange={event => { const value=event.target.value as ProviderId; setProviderForm(value); setProviderModel(({openai:'gpt-4.1-mini',deepseek:'deepseek-chat',groq:'llama-3.3-70b-versatile',openrouter:'openai/gpt-4.1-mini'} as Record<ProviderId,string>)[value]); }}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="groq">Groq</option><option value="openrouter">OpenRouter</option></select></label><label>Model<input value={providerModel} onChange={event => setProviderModel(event.target.value)} placeholder="Model identifier"/></label><label>API key<input type="password" value={providerApiKey} onChange={event => setProviderApiKey(event.target.value)} autoComplete="off" placeholder="Paste provider API key"/></label><button className="provider-save" onClick={saveProvider} disabled={busy || !providerApiKey.trim() || !providerModel.trim()}>Encrypt and save key</button>{providerConfigs.length > 0 && <><h4>Configured providers</h4>{providerConfigs.map(config => <div className="provider-row" key={config.provider}><div><b>{config.provider}</b><small>{config.model}</small></div><button onClick={() => testProvider(config.provider)}>Test</button><button onClick={() => removeProvider(config.provider)}>Remove</button></div>)}</>}{providerMessage && <div className="provider-message" role="status">{providerMessage}</div>}<small>Provider calls are billed by your chosen provider. Workers AI remains available as a fallback.</small></div> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
-      <div className={previewOpen ? 'editor preview-active' : 'editor'}><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div>{previewOpen && <div className="preview-pane"><div className="preview-head"><span><Play size={12}/> HTML PREVIEW · SANDBOXED</span><button onClick={() => setPreviewOpen(false)}><X size={13}/></button></div><iframe title="Sandboxed HTML preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={selectedPath.toLowerCase().endsWith('.html') ? content : '<!doctype html><html><body style="font:14px sans-serif;padding:24px">Select an HTML file to preview.</body></html>'}/></div>}<div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
+      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!canAdminWorkspace}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!isWorkspaceOwner}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file" disabled={!canEditWorkspace}><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => openFile(file.path)}><span className="file-dot"/> {file.path}</button>{canEditWorkspace && <button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button>}</div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : panel === 'agents' ? <div className="history-list">{agentRuns.length ? agentRuns.map(run => <button className="history-item" key={run.id} onClick={() => { try { setAgentOutput(JSON.parse(run.result_json || '{}').response || 'No response stored.'); } catch { setAgentOutput('Could not read this run result.'); } setActivity(run.agent_type + ' · ' + run.status); }}><span className="history-role">{run.agent_type} · {run.status}</span><strong>{run.task}</strong><small>{new Date(run.created_at).toLocaleString()}</small></button>) : <div className="panel-empty"><BrainCircuit size={18}/><strong>No agent runs yet</strong><span>Choose a role in the AI command center and send a task.</span></div>}</div> : panel === 'activity' ? <div className="history-list">{activityEvents.length ? activityEvents.map(event => <div className="history-item activity-item" key={event.id}><span className="history-role">{event.action}</span><small>{new Date(event.created_at).toLocaleString()}</small><code>{event.metadata_json}</code></div>) : <div className="panel-empty"><Activity size={18}/><strong>No activity yet</strong><span>Workspace, file, and agent actions will appear here.</span></div>}</div> : panel === 'settings' ? <div className="provider-settings"><h3>Profile</h3><p>Signed in as {session.user.email}</p><label>Display name<input value={profileName} onChange={event => setProfileName(event.target.value)} maxLength={80} placeholder="Your display name"/></label><label>Avatar URL<input value={profileAvatar} onChange={event => setProfileAvatar(event.target.value)} placeholder="https://…"/></label><button className="provider-save" onClick={saveProfile} disabled={busy}>Save profile</button><h3>Workspace collaboration</h3><p>Current role: <b>{activeWorkspace?.role || 'owner'}</b>. Invitations are single-use links that expire after 7 days.</p>{canAdminWorkspace ? <><label>Invite email<input type="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="teammate@example.com"/></label><label>Role<select value={inviteRole} onChange={event => setInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label><button className="provider-save" onClick={inviteMember} disabled={busy || !inviteEmail.trim()}>Create invitation link</button>{inviteUrl && <div className="invite-link"><input readOnly value={inviteUrl}/><button onClick={() => navigator.clipboard.writeText(inviteUrl)}>Copy</button></div>}<h4>Workspace members</h4>{workspaceMembers.map(member => <div className="provider-row" key={member.user_id}><div><b>{member.display_name || member.user_id.slice(0,8)}</b><small>{member.role}</small></div>{member.role !== 'owner' && <button onClick={() => removeMember(member.user_id)}>Remove</button>}</div>)}</> : <small>Only workspace owners and admins can invite or manage members.</small>}{collaborationMessage && <div className="provider-message" role="status">{collaborationMessage}</div>}<h3>Model providers</h3><p>Use your own API key. Keys are AES-GCM encrypted in D1 and decrypted only inside the Worker.</p><label>Provider<select value={providerForm} onChange={event => { const value=event.target.value as ProviderId; setProviderForm(value); setProviderModel(({openai:'gpt-4.1-mini',deepseek:'deepseek-chat',groq:'llama-3.3-70b-versatile',openrouter:'openai/gpt-4.1-mini'} as Record<ProviderId,string>)[value]); }}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="groq">Groq</option><option value="openrouter">OpenRouter</option></select></label><label>Model<input value={providerModel} onChange={event => setProviderModel(event.target.value)} placeholder="Model identifier"/></label><label>API key<input type="password" value={providerApiKey} onChange={event => setProviderApiKey(event.target.value)} autoComplete="off" placeholder="Paste provider API key"/></label><button className="provider-save" onClick={saveProvider} disabled={busy || !providerApiKey.trim() || !providerModel.trim()}>Encrypt and save key</button>{providerConfigs.length > 0 && <><h4>Configured providers</h4>{providerConfigs.map(config => <div className="provider-row" key={config.provider}><div><b>{config.provider}</b><small>{config.model}</small></div><button onClick={() => testProvider(config.provider)}>Test</button><button onClick={() => removeProvider(config.provider)}>Remove</button></div>)}</>}{providerMessage && <div className="provider-message" role="status">{providerMessage}</div>}<small>Provider calls are billed by your chosen provider. Workers AI remains available as a fallback.</small></div> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
+      <div className={previewOpen ? 'editor preview-active' : 'editor'}><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ readOnly: !canEditWorkspace, minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div>{previewOpen && <div className="preview-pane"><div className="preview-head"><span><Play size={12}/> HTML PREVIEW · SANDBOXED</span><button onClick={() => setPreviewOpen(false)}><X size={13}/></button></div><iframe title="Sandboxed HTML preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={selectedPath.toLowerCase().endsWith('.html') ? content : '<!doctype html><html><body style="font:14px sans-serif;padding:24px">Select an HTML file to preview.</body></html>'}/></div>}<div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
       <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
     {historyOpen && <div className="modal-backdrop" onClick={() => setHistoryOpen(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>FILE VERSION HISTORY</b><small>{selectedPath}</small></div><button onClick={() => setHistoryOpen(false)}><X size={16}/></button></div><div className="history-modal-body"><aside className="version-list">{historyLoading ? <small>Loading versions…</small> : historyVersions.length ? historyVersions.map(version => <button className={selectedVersion === version.id ? 'version-item selected' : 'version-item'} key={version.id} onClick={() => { setSelectedVersion(version.id); setVersionContent(version.content); }}><b>{new Date(version.created_at).toLocaleString()}</b><small>{version.content.length.toLocaleString()} characters</small></button>) : <div className="panel-empty"><History size={18}/><strong>No saved versions</strong><span>Save the file after editing to create a history snapshot.</span></div>}</aside><div className="history-diff">{selectedVersion ? <DiffEditor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} original={versionContent} modified={content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/> : <div className="panel-empty">Select a version to compare.</div>}</div></div><div className="history-modal-foot"><span>Left: selected version · Right: current editor buffer</span><button className="run" onClick={restoreVersion} disabled={!selectedVersion || busy}>Restore selected version</button></div></div></div>}{searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
