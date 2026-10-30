@@ -167,7 +167,7 @@ function App() {
     setConnection('checking');
     const inviteToken = new URLSearchParams(window.location.search).get('invite');
     const acceptPendingInvite = inviteToken
-      ? acceptWorkspaceInvite(inviteToken).then(() => { window.history.replaceState({}, '', window.location.pathname); setNotice('Workspace invitation accepted.'); })
+      ? acceptWorkspaceInvite(inviteToken).then(() => { setNotice('Workspace invitation accepted.'); }).catch(error => { setNotice(error.message); }).finally(() => { window.history.replaceState({}, '', window.location.pathname); })
       : Promise.resolve();
     acceptPendingInvite.then(() => loadWorkspaces()).then(() => { setConnection('connected'); setActivity('Workspace loaded'); }).catch(error => { setConnection('offline'); setNotice(error.message); });
   }, [session, loadWorkspaces]);
