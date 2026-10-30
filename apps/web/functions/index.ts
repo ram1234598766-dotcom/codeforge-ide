@@ -303,29 +303,30 @@ async function api(request: Request, env: Env): Promise<Response> {
   if (cached !== null) {
    try { return reply({results:JSON.parse(cached),cached:true}); } catch { /* Ignore malformed cache entries. */ }
   }
-  const sql = mode === 'path'
-   ? 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 100'
-   : mode === 'content'
-    ? 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND instr(lower(content),lower(?))>0 ORDER BY path LIMIT 100'
-    : 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND (instr(lower(path),lower(?))>0 OR instr(lower(content),lower(?))>0) ORDER BY path LIMIT 100';
-  const statement = env.CODEFORGE_DB.prepare(sql);
-  const result = mode === 'all'
-   ? await statement.bind(id,normalized,normalized).all<{path:string;content:string}>()
-   : await statement.bind(id,normalized).all<{path:string;content:string}>();
-  const rows = result.results || [];
-  const matches = rows.slice(0,50).map(file => {
-   const pathMatched = file.path.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
+  const rowType = {} as {path:string;excerpt:string;start_line:number;content_matched:number;path_matched:number};
+  let rows = [] as typeof rowType[];
+  if (mode === 'path') {
+   const result = await env.CODEFORGE_DB.prepare("SELECT path,'' AS excerpt,0 AS start_line,0 AS content_matched,1 AS path_matched FROM workspace_files WHERE workspace_id=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 50").bind(id,normalized).all<typeof rowType>();
+   rows = result.results || [];
+  } else if (mode === 'content') {
+   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos FROM workspace_files WHERE workspace_id=?) SELECT path,substr(content,max(1,pos-240),640) AS excerpt,length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 AS start_line,1 AS content_matched,0 AS path_matched FROM candidates WHERE pos>0 ORDER BY path LIMIT 50").bind(normalized,id).all<typeof rowType>();
+   rows = result.results || [];
+  } else {
+   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos,instr(lower(path),lower(?)) AS path_pos FROM workspace_files WHERE workspace_id=?) SELECT path,CASE WHEN pos>0 THEN substr(content,max(1,pos-240),640) ELSE '' END AS excerpt,CASE WHEN pos>0 THEN length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 ELSE 0 END AS start_line,(pos>0) AS content_matched,(path_pos>0) AS path_matched FROM candidates WHERE pos>0 OR path_pos>0 ORDER BY path LIMIT 50").bind(normalized,normalized,id).all<typeof rowType>();
+   rows = result.results || [];
+  }
+  const matches = rows.map(file => {
    const hits:Array<{line:number;text:string}> = [];
-   if (mode !== 'path') {
-    for (const [index,line] of file.content.split('\n').entries()) {
-     if (line.toLocaleLowerCase().includes(normalized.toLocaleLowerCase())) {
-      hits.push({line:index+1,text:line.trim().slice(0,320)});
-      if (hits.length >= 5) break;
-     }
-    }
+   if (file.content_matched) {
+    const excerpt = file.excerpt || '';
+    const offset = excerpt.toLocaleLowerCase().indexOf(normalized.toLocaleLowerCase());
+    const before = excerpt.slice(0,Math.max(0,offset));
+    const excerptLines = excerpt.split('\\n');
+    const localLine = Math.max(0,before.split('\\n').length-1);
+    hits.push({line:(file.start_line || 1)+localLine,text:(excerptLines[localLine] || excerpt).trim().slice(0,320)});
    }
-   if (mode === 'path' || (pathMatched && hits.length === 0)) hits.push({line:0,text:file.path});
-   return {path:file.path,matches:Math.max(hits.length,pathMatched ? 1 : 0),hits};
+   if (mode === 'path' || (file.path_matched && hits.length === 0)) hits.push({line:0,text:file.path});
+   return {path:file.path,matches:hits.length,hits};
   });
   await env.CODEFORGE_KV.put(cacheKey,JSON.stringify(matches),{expirationTtl:60});
   return reply({results:matches,cached:false});
