@@ -804,7 +804,9 @@ if (hostedRedirect) {
   const authRedirectState = readAuthRedirectState(window.location.href);
   const root = createRoot(document.getElementById('root')!);
   const isAppRoute = window.location.pathname === '/app' || window.location.pathname.startsWith('/app/');
-  const isAuthCallback = Boolean(window.location.search || window.location.hash);
+  const authQuery = new URLSearchParams(window.location.search);
+  const authHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const isAuthCallback = authQuery.has('code') || authQuery.has('error') || authHash.has('access_token') || authHash.has('error') || authHash.has('type');
   if (!isAppRoute && !isAuthCallback) {
     root.render(<LandingPage />);
   } else {
