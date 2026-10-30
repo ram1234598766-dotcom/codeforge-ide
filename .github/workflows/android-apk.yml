@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build-android-apk:
-    name: Build Android release APK
+    name: Build and sign Android release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -64,32 +64,44 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Stage APK and Android signing tools
+      - name: Align, sign, and verify APK
         shell: bash
+        env:
+          EXPO_NO_TELEMETRY: "1"
         run: |
           set -euo pipefail
           APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK_PATH"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          mkdir -p release/sign-tools
-          cp "$APK_PATH" release/CodeForge-android-build.apk
-          cp "$SDK_BUILD_TOOLS/zipalign" release/sign-tools/
-          cp "$SDK_BUILD_TOOLS/apksigner" release/sign-tools/
-          cp -R "$SDK_BUILD_TOOLS/lib" release/sign-tools/
-          "$SDK_BUILD_TOOLS/aapt" dump badging release/CodeForge-android-build.apk | head -n 5
-          sha256sum release/CodeForge-android-build.apk > release/SHA256SUMS.txt
-          printf 'APK_SOURCE=%s\n' "$APK_PATH" > release/BUILD-METADATA.txt
-          printf 'COMMIT=%s\n' "$GITHUB_SHA" >> release/BUILD-METADATA.txt
-          printf 'BUILD_TOOLS=%s\n' "$(basename "$SDK_BUILD_TOOLS")" >> release/BUILD-METADATA.txt
+          mkdir -p release
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" | head -n 5
+          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-unaligned.apk
+          STORE_PASSWORD="$(openssl rand -hex 32)"
+          KEY_PASSWORD="$(openssl rand -hex 32)"
+          keytool -genkeypair -v -keystore release/codeforge-release.jks \
+            -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+            -alias codeforge -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=CodeForge Release,O=CodeForge,C=IN"
+          export KEYSTORE_PASSWORD="$STORE_PASSWORD"
+          export KEY_PASSWORD
+          "$SDK_BUILD_TOOLS/apksigner" sign \
+            --ks release/codeforge-release.jks --ks-key-alias codeforge \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out release/CodeForge.apk release/CodeForge-unaligned.apk
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
+          sha256sum release/CodeForge.apk > release/SHA256SUMS.txt
+          printf 'COMMIT=%s\n' "$GITHUB_SHA" > release/BUILD-METADATA.txt
+          printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
+          printf 'SIGNING=verified Android APK Signature Scheme\n' >> release/BUILD-METADATA.txt
+          rm -f release/CodeForge-unaligned.apk release/codeforge-release.jks
 
-      - name: Upload APK build and public signing tools
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: codeforge-android-build-${{ github.sha }}
+          name: CodeForge-signed-Android-APK-${{ github.sha }}
           path: |
-            release/CodeForge-android-build.apk
+            release/CodeForge.apk
             release/SHA256SUMS.txt
             release/BUILD-METADATA.txt
-            release/sign-tools/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
