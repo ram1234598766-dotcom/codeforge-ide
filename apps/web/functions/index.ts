@@ -123,6 +123,15 @@ async function api(request: Request, env: Env): Promise<Response> {
   const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at,updated_at FROM workspace_files WHERE workspace_id=? AND user_id=? ORDER BY path').bind(id,userId).all();
   return reply({files:result.results || []});
  }
+ if (resource === 'files' && request.method === 'DELETE') {
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const filePath=typeof body?.path==='string'?body.path.trim().replace(/^\\/+/, ''):'';
+  if(!filePath || filePath.length>500 || filePath.split('/').some((p:string)=>!p || p==='.' || p==='..')) return reply({error:'Invalid path'},400);
+  const existing=await env.CODEFORGE_DB.prepare('SELECT id FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).first();
+  if(!existing) return reply({error:'File not found'},404);
+  await env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).run();
+  return reply({ok:true,path:filePath});
+ }
  if (resource === 'files' && request.method === 'PUT') {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const filePath=typeof body?.path==='string'?body.path.trim().replace(/^\/+/, ''):'', content=typeof body?.content==='string'?body.content:'';
