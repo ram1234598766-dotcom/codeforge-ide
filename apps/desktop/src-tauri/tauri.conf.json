@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodeForge",
+  "version": "0.1.0",
+  "identifier": "com.codeforge.ide",
+  "build": {
+    "devUrl": "https://codeforge-ide.vasudevaya.workers.dev",
+    "frontendDist": "https://codeforge-ide.vasudevaya.workers.dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "CodeForge",
+        "url": "https://codeforge-ide.vasudevaya.workers.dev",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 980,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}
