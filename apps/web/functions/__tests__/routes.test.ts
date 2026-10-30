@@ -89,32 +89,61 @@ describe('parseWorkspaceRoute version history', () => {
   });
 });
 
+describe('parseWorkspaceRoute collaboration routes', () => {
+  it('matches member and invitation endpoints', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/members`)).toEqual({ workspaceId: id, resource: 'members' });
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/invites`)).toEqual({ workspaceId: id, resource: 'invites' });
+  });
+});
+
+import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole } from '../routes';
+
+describe('workspace role permissions', () => {
+  it('allows editors and above to change files', () => {
+    expect(canEditWorkspaceRole('owner')).toBe(true);
+    expect(canEditWorkspaceRole('admin')).toBe(true);
+    expect(canEditWorkspaceRole('editor')).toBe(true);
+    expect(canEditWorkspaceRole('viewer')).toBe(false);
+  });
+  it('limits workspace administration to owners and admins', () => {
+    expect(canAdminWorkspaceRole('owner')).toBe(true);
+    expect(canAdminWorkspaceRole('admin')).toBe(true);
+    expect(canAdminWorkspaceRole('editor')).toBe(false);
+  });
+  it('reserves workspace deletion for owners', () => {
+    expect(canDeleteWorkspaceRole('owner')).toBe(true);
+    expect(canDeleteWorkspaceRole('admin')).toBe(false);
+  });
+});
+
+
 import { parseWorkspaceChangeRoute, validateCodeChange } from '../routes';
 
 describe('parseWorkspaceChangeRoute', () => {
-  it('matches the workspace change queue', () => {
-    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes`)).toEqual({ workspaceId: id });
+  it('matches the workspace change queue and optional trailing slash', () => {
+    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes\`)).toEqual({ workspaceId: id });
+    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\`)).toEqual({ workspaceId: id });
   });
   it('matches explicit approve and reject actions', () => {
     const changeId = '223e4567-e89b-12d3-a456-426614174000';
-    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/approve`)).toEqual({ workspaceId: id, changeId, action: 'approve' });
-    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/reject`)).toEqual({ workspaceId: id, changeId, action: 'reject' });
+    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${changeId}/approve\`)).toEqual({ workspaceId: id, changeId, action: 'approve' });
+    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${changeId}/reject\`)).toEqual({ workspaceId: id, changeId, action: 'reject' });
   });
-  it('rejects unsupported change actions and malformed ids', () => {
-    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${id}/apply`)).toBeNull();
-    expect(parseWorkspaceChangeRoute('/api/workspaces/nope/changes')).toBeNull();
+  it('rejects unsupported actions and malformed identifiers', () => {
+    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${id}/apply\`)).toBeNull();
+    expect(parseWorkspaceChangeRoute('/api/workspaces/not-a-uuid/changes')).toBeNull();
   });
 });
 
 describe('validateCodeChange', () => {
-  it('accepts a valid relative path and bounded proposed content', () => {
+  it('accepts a valid relative path and text content', () => {
     expect(validateCodeChange('src/App.tsx', 'export default function App() {}')).toBeNull();
   });
-  it('rejects unsafe paths and non-string content', () => {
+  it('rejects traversal paths and non-text content', () => {
     expect(validateCodeChange('../secrets.txt', 'x')).toBe('Invalid file path.');
     expect(validateCodeChange('src/App.tsx', null)).toBe('Proposed content must be text.');
   });
-  it('rejects proposals larger than one megabyte', () => {
+  it('enforces a one-megabyte content limit', () => {
     expect(validateCodeChange('src/App.tsx', 'x'.repeat(1_000_001))).toBe('Proposed content must be 1 MB or smaller.');
   });
 });
