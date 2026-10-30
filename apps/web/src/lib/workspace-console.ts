@@ -65,7 +65,7 @@ export function runWorkspaceConsoleCommand(
     }
     case 'tree':
       return output(files.length
-        ? files.map(file => `${'  '.repeat(Math.max(0, file.path.split('/').length - 1)}${file.path.split('/').at(-1)}`)
+        ? files.map(file => `${'  '.repeat(Math.max(0, file.path.split('/').length - 1))${file.path.split('/').at(-1)}`)
         : ['(empty workspace)']);
     case 'cat':
     case 'head':
