@@ -149,3 +149,34 @@ export async function restoreFileVersion(workspaceId: string, versionId: string)
   });
   return result;
 }
+
+export type CodeChangeRequest = {
+  id: string;
+  file_path: string;
+  original_content: string;
+  proposed_content: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at?: string;
+  updated_at?: string;
+};
+
+export async function listCodeChanges(workspaceId: string): Promise<CodeChangeRequest[]> {
+  const result = await apiRequest<{ changes: CodeChangeRequest[] }>(`/api/workspaces/${workspaceId}/changes`);
+  return result.changes;
+}
+
+export async function proposeCodeChange(workspaceId: string, path: string, proposedContent: string): Promise<CodeChangeRequest> {
+  const result = await apiRequest<{ change: CodeChangeRequest }>(`/api/workspaces/${workspaceId}/changes`, {
+    method: 'POST',
+    body: JSON.stringify({ path, proposedContent }),
+  });
+  return result.change;
+}
+
+export async function approveCodeChange(workspaceId: string, changeId: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${workspaceId}/changes/${changeId}/approve`, { method: 'POST' });
+}
+
+export async function rejectCodeChange(workspaceId: string, changeId: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${workspaceId}/changes/${changeId}/reject`, { method: 'POST' });
+}
