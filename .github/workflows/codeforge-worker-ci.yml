@@ -1,0 +1,27 @@
+name: CodeForge Worker CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feat/cloudflare-worker-foundation
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install web dependencies
+        run: npm --prefix apps/web install --no-audit --no-fund
+      - name: Unit tests
+        run: npm --prefix apps/web test
+      - name: Type-check
+        run: npm --prefix apps/web run typecheck
+      - name: Build
+        run: npm --prefix apps/web run build
+      - name: Validate Worker configuration and bundle
+        run: npx --yes wrangler@4 deploy --dry-run
