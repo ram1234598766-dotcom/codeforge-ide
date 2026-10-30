@@ -100,6 +100,12 @@ jobs:
       - name: Install Expo dependencies
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=false
+      - name: Set monotonic Android app version
+        working-directory: apps/mobile
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          node -e "const fs=require('node:fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.android.versionCode=Number(process.env.BUILD_NUMBER);j.expo.version='1.0.'+process.env.BUILD_NUMBER;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');"
       - name: Generate Android project
         working-directory: apps/mobile
         env:
@@ -128,7 +134,7 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
           sha256sum release/CodeForge.apk > release/SHA256-Android.txt
           printf 'PACKAGE=com.codeforge.ide\n' > release/BUILD-METADATA.txt
-          printf 'VERSION=1.0.0\n' >> release/BUILD-METADATA.txt
+          printf 'VERSION=1.0.%s\n' "$GITHUB_RUN_NUMBER" >> release/BUILD-METADATA.txt
           printf 'SIGNING=one-build generated key; signature verified; future upgrades require uninstall/reinstall\n' >> release/BUILD-METADATA.txt
           rm -f "$ANDROID_KEYSTORE" "$RUNNER_TEMP/CodeForge-aligned.apk"
       - uses: actions/upload-artifact@v4
