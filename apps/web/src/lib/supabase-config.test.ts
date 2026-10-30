@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getSupabaseAuthOptions, getSupabaseRedirectUrl, isSupabasePublishableKey, resolveSupabaseConfig } from './supabase-config';
+import { getHostedAppRedirectUrl, getSupabaseAuthOptions, getSupabaseRedirectUrl, isSupabasePublishableKey, resolveSupabaseConfig } from './supabase-config';
 
 describe('resolveSupabaseConfig', () => {
   it('uses Worker runtime configuration when Vite build values are absent', () => {
