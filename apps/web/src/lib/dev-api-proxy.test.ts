@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createDevApiProxyConfig, getDevApiProxyTarget } from './dev-api-proxy';
+import { createDevApiProxyConfig, DEFAULT_CODEFORGE_DEV_PORT, getDevApiProxyTarget } from './dev-api-proxy';
 
 describe('local API proxy', () => {
+  it('uses the locally allowlisted callback port by default', () => {
+    expect(DEFAULT_CODEFORGE_DEV_PORT).toBe(3000);
+  });
   it('defaults local API requests to the deployed CodeForge Worker', () => {
     expect(getDevApiProxyTarget()).toBe('https://codeforge-ide.vasudevaya.workers.dev');
   });
