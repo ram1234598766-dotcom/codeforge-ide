@@ -42,7 +42,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
       - name: Install Expo dependencies
         working-directory: apps/mobile
@@ -62,27 +64,32 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Stage and inspect APK
+      - name: Stage APK and Android signing tools
         shell: bash
         run: |
           set -euo pipefail
           APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK_PATH"
-          mkdir -p release
-          cp "$APK_PATH" release/CodeForge-android-unsigned.apk
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$SDK_BUILD_TOOLS/aapt" dump badging release/CodeForge-android-unsigned.apk | head -n 5
-          sha256sum release/CodeForge-android-unsigned.apk > release/SHA256SUMS.txt
+          mkdir -p release/sign-tools
+          cp "$APK_PATH" release/CodeForge-android-build.apk
+          cp "$SDK_BUILD_TOOLS/zipalign" release/sign-tools/
+          cp "$SDK_BUILD_TOOLS/apksigner" release/sign-tools/
+          cp -R "$SDK_BUILD_TOOLS/lib" release/sign-tools/
+          "$SDK_BUILD_TOOLS/aapt" dump badging release/CodeForge-android-build.apk | head -n 5
+          sha256sum release/CodeForge-android-build.apk > release/SHA256SUMS.txt
           printf 'APK_SOURCE=%s\n' "$APK_PATH" > release/BUILD-METADATA.txt
           printf 'COMMIT=%s\n' "$GITHUB_SHA" >> release/BUILD-METADATA.txt
+          printf 'BUILD_TOOLS=%s\n' "$(basename "$SDK_BUILD_TOOLS")" >> release/BUILD-METADATA.txt
 
-      - name: Upload APK for private release signing
+      - name: Upload APK build and public signing tools
         uses: actions/upload-artifact@v4
         with:
-          name: codeforge-android-unsigned-${{ github.sha }}
+          name: codeforge-android-build-${{ github.sha }}
           path: |
-            release/CodeForge-android-unsigned.apk
+            release/CodeForge-android-build.apk
             release/SHA256SUMS.txt
             release/BUILD-METADATA.txt
+            release/sign-tools/
           if-no-files-found: error
           retention-days: 7
