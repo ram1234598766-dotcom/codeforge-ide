@@ -93,3 +93,38 @@ export async function listActivity(): Promise<ActivityEvent[]> {
   const result = await apiRequest<{ events: ActivityEvent[] }>('/api/activity');
   return result.events;
 }
+
+export type ProviderId = 'openai' | 'deepseek' | 'groq' | 'openrouter';
+export type ProviderConfig = {
+  provider: ProviderId;
+  model: string;
+  base_url: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listProviderConfigs(): Promise<ProviderConfig[]> {
+  const result = await apiRequest<{ providers: ProviderConfig[] }>('/api/settings/providers');
+  return result.providers;
+}
+
+export async function saveProviderConfig(provider: ProviderId, model: string, apiKey: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>('/api/settings/providers', {
+    method: 'PUT',
+    body: JSON.stringify({ provider, model, apiKey }),
+  });
+}
+
+export async function testProviderConfig(provider: ProviderId): Promise<void> {
+  await apiRequest<{ ok: boolean }>('/api/settings/providers/test', {
+    method: 'POST',
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export async function deleteProviderConfig(provider: ProviderId): Promise<void> {
+  await apiRequest<{ ok: boolean }>('/api/settings/providers', {
+    method: 'DELETE',
+    body: JSON.stringify({ provider }),
+  });
+}
