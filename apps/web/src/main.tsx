@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Editor from '@monaco-editor/react';
-import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, LogOut, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, X, Zap } from 'lucide-react';
+import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, LogOut, Pencil, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, Trash2, X, Zap } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, supabase, supabaseConfig } from './lib/supabase';
 import {
-  createWorkspace, listWorkspaces, listWorkspaceFiles, saveWorkspaceFile,
+  createWorkspace, deleteWorkspace, deleteWorkspaceFile, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile,
   type Workspace,
 } from './lib/workspaces';
 
@@ -77,6 +77,7 @@ function App() {
   const [activity, setActivity] = useState('Ready to build');
   const [panel, setPanel] = useState<Panel>('explorer');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -153,7 +154,61 @@ function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create workspace.'); }
     finally { setBusy(false); }
   };
+  const renameActiveWorkspace = async () => {
+    const active = workspaces.find(item => item.id === workspaceId);
+    if (!active) return;
+    const name = window.prompt('Rename workspace', active.name);
+    if (!name?.trim() || name.trim() === active.name) return;
+    setBusy(true);
+    try {
+      const updated = await renameWorkspace(workspaceId, name.trim());
+      setWorkspaces(previous => previous.map(item => item.id === workspaceId ? updated : item));
+      setNotice('Workspace renamed.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not rename workspace.'); }
+    finally { setBusy(false); }
+  };
+  const deleteActiveWorkspace = async () => {
+    const active = workspaces.find(item => item.id === workspaceId);
+    if (!active || !window.confirm(`Delete workspace "${active.name}" and all its files?`)) return;
+    setBusy(true);
+    try {
+      await deleteWorkspace(workspaceId);
+      const remaining = workspaces.filter(item => item.id !== workspaceId);
+      if (remaining.length) {
+        const next = remaining[0];
+        const saved = await listWorkspaceFiles(next.id);
+        const mapped = saved.map(file => ({ ...file, language: file.language || languageFor(file.path) }));
+        setWorkspaces(remaining); setWorkspaceId(next.id); setFiles(mapped);
+        setSelectedPath(mapped[0]?.path || ''); setContent(mapped[0]?.content || ''); setSavedContent(mapped[0]?.content || '');
+      } else {
+        const next = await createWorkspace('My first project', 'Your CodeForge workspace');
+        const initial = { path: 'src/App.tsx', content: starterCode, language: 'typescript' };
+        await saveWorkspaceFile(next.id, initial.path, initial.content, initial.language);
+        setWorkspaces([next]); setWorkspaceId(next.id); setFiles([initial]);
+        setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
+      }
+      setNotice('Workspace deleted.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete workspace.'); }
+    finally { setBusy(false); }
+  };
+  const deleteFile = async (path: string) => {
+    if (!workspaceId || !window.confirm(`Delete ${path}?`)) return;
+    setBusy(true);
+    try {
+      await deleteWorkspaceFile(workspaceId, path);
+      const remaining = files.filter(file => file.path !== path);
+      setFiles(remaining);
+      if (selectedPath === path) {
+        setSelectedPath(remaining[0]?.path || '');
+        setContent(remaining[0]?.content || '');
+        setSavedContent(remaining[0]?.content || '');
+      }
+      setNotice('File deleted from Cloudflare D1.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not delete file.'); }
+    finally { setBusy(false); }
+  };
   const selectWorkspace = async (id: string) => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
     setBusy(true);
     try {
       const saved = await listWorkspaceFiles(id);
@@ -202,11 +257,11 @@ function App() {
     </header>
     <section className="layout">
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
-      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <button className={'file ' + (selectedPath === file.path ? 'active' : '')} key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); }}><span className="file-dot"/> {file.path}</button>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
+      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!workspaceId}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!workspaceId}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); }}><span className="file-dot"/> {file.path}</button><button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button></div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
       <div className="editor"><div className="tabs"><button className="tab active">{selectedPath || 'No file selected'} {dirty ? '•' : <Check size={12}/>}</button></div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div><div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
       <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
-    {searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus placeholder="Search files…"/><small>Search across repository files will be enabled with repository indexing.</small></div></div>}
+    {searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
