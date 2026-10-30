@@ -1,4 +1,13 @@
 export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' } | null;
+export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;
+
+export function parseWorkspaceChangeRoute(pathname: string): WorkspaceChangeRoute {
+  const path = pathname.replace(/\\/$/, '');
+  const match = path.match(/^\\/api\\/workspaces\\/([a-f0-9-]{36})\\/changes(?:\\/([a-f0-9-]{36})\\/(approve|reject))?$/i);
+  if (!match) return null;
+  return { workspaceId: match[1], ...(match[2] ? { changeId: match[2], action: match[3] as 'approve' | 'reject' } : {}) };
+}
+
 
 export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   const path = pathname.replace(/\/$/, '');
@@ -37,5 +46,13 @@ export function validateWorkspaceFilePath(path: unknown): string | null {
   if (!value || value.length > 500 || value.split('/').some(part => !part || part === '.' || part === '..')) {
     return 'Invalid file path.';
   }
+  return null;
+}
+
+export function validateCodeChange(path: unknown, content: unknown): string | null {
+  const pathError = validateWorkspaceFilePath(path);
+  if (pathError) return pathError;
+  if (typeof content !== 'string') return 'Proposed content must be text.';
+  if (new TextEncoder().encode(content).byteLength > 1_000_000) return 'Proposed content must be 1 MB or smaller.';
   return null;
 }
