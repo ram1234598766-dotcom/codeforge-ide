@@ -187,7 +187,7 @@ function App() {
         listWorkspaceMembers(workspaceId).then(setWorkspaceMembers).catch(error => setCollaborationMessage(error.message));
       } else setWorkspaceMembers([]);
     }
-  }, [panel, session]);
+  }, [panel, session, workspaceId, workspaces]);
 
   const activeWorkspace = useMemo(() => workspaces.find(item => item.id === workspaceId), [workspaces, workspaceId]);
   const canEditWorkspace = !activeWorkspace || activeWorkspace.role !== 'viewer';
