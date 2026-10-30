@@ -220,13 +220,13 @@ function App() {
         const next = remaining[0];
         const saved = await listWorkspaceFiles(next.id);
         const mapped = saved.map(file => ({ ...file, language: file.language || languageFor(file.path) }));
-        setWorkspaces(remaining); setWorkspaceId(next.id); setFiles(mapped);
+        setWorkspaces(remaining); setWorkspaceId(next.id); setFiles(mapped); setOpenPaths(mapped[0]?.path ? [mapped[0].path] : []);
         setSelectedPath(mapped[0]?.path || ''); setContent(mapped[0]?.content || ''); setSavedContent(mapped[0]?.content || '');
       } else {
         const next = await createWorkspace('My first project', 'Your CodeForge workspace');
         const initial = { path: 'src/App.tsx', content: starterCode, language: 'typescript' };
         await saveWorkspaceFile(next.id, initial.path, initial.content, initial.language);
-        setWorkspaces([next]); setWorkspaceId(next.id); setFiles([initial]);
+        setWorkspaces([next]); setWorkspaceId(next.id); setFiles([initial]); setOpenPaths([initial.path]);
         setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
       }
       setNotice('Workspace deleted.');
