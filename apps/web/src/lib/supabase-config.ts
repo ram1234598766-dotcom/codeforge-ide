@@ -57,3 +57,25 @@ export function getSupabaseAuthOptions() {
     detectSessionInUrl: true,
   };
 }
+
+/**
+ * CodeForge is hosted-only. Prevent new auth sessions from being initiated on
+ * localhost, where PKCE storage would be scoped to the wrong browser origin.
+ * An OAuth callback already carrying a code is left on its original origin so
+ * the verifier created by that same origin can be exchanged safely.
+ */
+export function getHostedAppRedirectUrl(currentHref: string): string | null {
+  try {
+    const current = new URL(currentHref);
+    const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(current.hostname);
+    if (!isLocalhost || current.searchParams.has('code')) return null;
+
+    const production = new URL(CODEFORGE_PRODUCTION_URL);
+    return new URL(
+      `${current.pathname}${current.search}${current.hash}`,
+      production,
+    ).toString();
+  } catch {
+    return null;
+  }
+}

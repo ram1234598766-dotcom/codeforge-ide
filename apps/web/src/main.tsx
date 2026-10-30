@@ -5,7 +5,7 @@ import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranc
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, initializeSupabase, supabase, supabaseConfig } from './lib/supabase';
-import { getSupabaseRedirectUrl } from './lib/supabase-config';
+import { getHostedAppRedirectUrl, getSupabaseRedirectUrl } from './lib/supabase-config';
 import {
   createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState, getProfile, updateProfile, listWorkspaceMembers, createWorkspaceInvite, removeWorkspaceMember, acceptWorkspaceInvite,
   type Workspace,
@@ -522,6 +522,11 @@ function App() {
     {historyOpen && <div className="modal-backdrop" onClick={() => setHistoryOpen(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>FILE VERSION HISTORY</b><small>{selectedPath}</small></div><button onClick={() => setHistoryOpen(false)}><X size={16}/></button></div><div className="history-modal-body"><aside className="version-list">{historyLoading ? <small>Loading versions…</small> : historyVersions.length ? historyVersions.map(version => <button className={selectedVersion === version.id ? 'version-item selected' : 'version-item'} key={version.id} onClick={() => { setSelectedVersion(version.id); setVersionContent(version.content); }}><b>{new Date(version.created_at).toLocaleString()}</b><small>{version.content.length.toLocaleString()} characters</small></button>) : <div className="panel-empty"><History size={18}/><strong>No saved versions</strong><span>Save the file after editing to create a history snapshot.</span></div>}</aside><div className="history-diff">{selectedVersion ? <DiffEditor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} original={versionContent} modified={content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/> : <div className="panel-empty">Select a version to compare.</div>}</div></div><div className="history-modal-foot"><span>Left: selected version · Right: current editor buffer</span><button className="run" onClick={restoreVersion} disabled={!selectedVersion || busy || !canEditWorkspace}>Restore selected version</button></div></div></div>}{searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
   </main>;
 }
-const root = createRoot(document.getElementById('root')!);
-root.render(<main className="auth-shell"><div className="auth-card">Loading CodeForge…</div></main>);
-void initializeSupabase().finally(() => root.render(<App/>));
+const hostedRedirect = getHostedAppRedirectUrl(window.location.href);
+if (hostedRedirect) {
+  window.location.replace(hostedRedirect);
+} else {
+  const root = createRoot(document.getElementById('root')!);
+  root.render(<main className="auth-shell"><div className="auth-card">Loading CodeForge…</div></main>);
+  void initializeSupabase().finally(() => root.render(<App/>));
+}
