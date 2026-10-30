@@ -25,3 +25,20 @@ id = "581b9fe8b58e4d798a1416514230d9df"
 
 [ai]
 binding = "AI"
+
+[previews.vars]
+SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
+VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
+
+[[previews.d1_databases]]
+binding = "CODEFORGE_DB"
+database_name = "codeforge-ide-preview"
+database_id = "925ba065-593a-4845-a368-56bc747492f0"
+migrations_dir = "migrations"
+
+[[previews.kv_namespaces]]
+binding = "CODEFORGE_KV"
+id = "e8ba7cf87815494f88709638a075840e"
+
+[previews.ai]
+binding = "AI"
