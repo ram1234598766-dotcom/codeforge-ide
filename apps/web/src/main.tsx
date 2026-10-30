@@ -245,6 +245,27 @@ function AuthScreen({
 }
 
 
+
+function LandingPage() {
+  const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  const code = activeTab === 'editor'
+    ? `import { createApp } from './app';\n\nconst workspace = createApp({\n  name: 'my-next-project',\n  ai: { provider: 'workers-ai' },\n  sync: { enabled: true },\n});\n\nworkspace.run();`
+    : `<main class="welcome">\n  <span class="eyebrow">YOUR NEXT IDEA STARTS HERE</span>\n  <h1>Build without limits.</h1>\n  <p>One workspace. Desktop power. Mobile freedom.</p>\n  <button>Start building →</button>\n</main>`;
+  return <main className="home-shell">
+    <nav className="home-nav"><a className="home-brand" href="/"><span className="home-mark"><Sparkles size={18}/></span> CodeForge <small>DEVELOPER STUDIO</small></a><div className="home-nav-links"><a href="#features">Features</a><a href="#downloads">Downloads</a><a href="https://github.com/ram1234598766-dotcom/codeforge-ide" target="_blank" rel="noreferrer">GitHub ↗</a></div><a className="home-nav-cta" href="/app">Open web IDE <ChevronRight size={15}/></a></nav>
+    <section className="home-hero"><div className="home-copy"><div className="home-kicker"><span/> PREVIEW IS LIVE <i>·</i> WINDOWS + ANDROID BUILDS</div><h1>Your ideas.<br/><em>Forged anywhere.</em></h1><p className="home-lede">A connected AI-native development workspace for your desktop, your phone, and the browser. Start in one place. Continue anywhere.</p><div className="home-actions"><a className="home-primary" href="/app">Launch browser preview <ChevronRight size={17}/></a><a className="home-secondary" href="#downloads">Get the apps <ArrowDownIcon/></a></div><div className="home-proof"><span><Check size={14}/> One account</span><span><Check size={14}/> Cloud-synced projects</span><span><Check size={14}/> Use each app independently</span></div></div>
+      <div className="home-preview-wrap"><div className="preview-glow"/><div className="home-window"><div className="home-window-bar"><div className="window-dots"><i/><i/><i/></div><span>CODEFORGE / WORKSPACE</span><b><span/> CLOUD LINKED</b></div><div className="home-window-body"><aside className="home-mini-sidebar"><div className="mini-workspace"><span>⌘</span> my-next-project</div><small>EXPLORER</small><div className="mini-folder">⌄ src</div><div className="mini-file active">◈ app.ts</div><div className="mini-file">◇ styles.css</div><div className="mini-file">◇ index.html</div><div className="mini-folder">⌄ public</div><div className="mini-file">◇ logo.svg</div><div className="mini-ai"><Sparkles size={13}/> AI AGENT <p>Ready to help you build.</p></div></aside><div className="home-mini-editor"><div className="mini-tabs"><button className={activeTab === 'editor' ? 'active' : ''} onClick={() => setActiveTab('editor')}>app.ts</button><button className={activeTab === 'preview' ? 'active' : ''} onClick={() => setActiveTab('preview')}>Preview</button><span>⌘ S</span></div><div className="mini-code"><div className="mini-gutter">1<br/>2<br/>3<br/>4<br/>5<br/>6<br/>7<br/>8<br/>9</div><pre>{code}</pre></div><div className="mini-status"><span>● TYPESCRIPT</span><span>SYNCED</span><span>UTF-8</span></div></div></div></div><div className="home-float-card"><span className="float-icon"><Zap size={15}/></span><div><b>One workspace</b><small>Browser · Desktop · Android</small></div><span className="float-live">LIVE</span></div></div>
+    </section>
+    <section className="home-stats"><div><b>01</b><span>ONE IDENTITY</span><small>Sign in once across your devices</small></div><div><b>02</b><span>LIVE SYNC</span><small>Projects saved to your cloud workspace</small></div><div><b>03</b><span>FLEXIBLE BY DESIGN</span><small>Use desktop, Android, or browser alone</small></div></section>
+    <section className="home-section" id="features"><div className="home-section-heading"><span>THE CODEFORGE ECOSYSTEM</span><h2>One studio. Three ways to build.</h2><p>Choose the surface that fits the moment. Your projects and account stay connected through the same secure cloud workspace.</p></div><div className="home-feature-grid"><article><div className="feature-icon"><Code2 size={19}/></div><small>01 / INSTANT</small><h3>Web preview</h3><p>Try the current IDE in your browser. No installation needed. A fast way to explore the workspace and sign in.</p><a href="/app">Open preview <ChevronRight size={14}/></a></article><article><div className="feature-icon"><MonitorIcon/></div><small>02 / DESKTOP</small><h3>Desktop for Windows</h3><p>A dedicated Windows app for a larger screen, keyboard-first workflows, and a native desktop window.</p><a href="#downloads">Get Windows installer <ChevronRight size={14}/></a></article><article><div className="feature-icon"><SmartphoneIcon/></div><small>03 / MOBILE</small><h3>Android companion</h3><p>Open your cloud IDE on the move, check projects, and continue working from your Android device.</p><a href="#downloads">Get Android app <ChevronRight size={14}/></a></article></div></section>
+    <section className="home-downloads" id="downloads"><div><span className="home-kicker">READY WHEN YOU ARE</span><h2>Bring CodeForge<br/><em>to your devices.</em></h2><p>Install the native app or keep using the browser preview. All clients use the same CodeForge account and cloud workspace.</p><div className="home-sync-note"><span><Check size={14}/></span><div><b>Connected or independent</b><small>Each app can be opened on its own. Sign in with the same account to access shared cloud projects. Internet is required for cloud sync.</small></div></div></div><div className="download-cards"><article><div className="download-card-top"><MonitorIcon/><span>WINDOWS 10 / 11</span></div><h3>CodeForge Desktop</h3><p>Native Windows installer</p><a className="download-link" href="https://github.com/ram1234598766-dotcom/codeforge-ide/releases/latest">Download .EXE <ArrowDownIcon/></a><small>Production installer releases</small></article><article><div className="download-card-top"><SmartphoneIcon/><span>ANDROID</span></div><h3>CodeForge Mobile</h3><p>Android package installer</p><a className="download-link" href="https://github.com/ram1234598766-dotcom/codeforge-ide/releases/latest">Download .APK <ArrowDownIcon/></a><small>Production app releases</small></article><div className="download-footnote">No release has been published yet? Check the <a href="https://github.com/ram1234598766-dotcom/codeforge-ide/actions">build pipeline</a> for preview artifacts.</div></div></section>
+    <footer className="home-footer"><a className="home-brand" href="/"><span className="home-mark"><Sparkles size={16}/></span> CodeForge</a><span>Build boldly. Ship everywhere.</span><a href="https://github.com/ram1234598766-dotcom/codeforge-ide">Open source repository ↗</a></footer>
+  </main>;
+}
+function ArrowDownIcon() { return <span aria-hidden="true">↓</span>; }
+function MonitorIcon() { return <span className="simple-device-icon" aria-hidden="true">▣</span>; }
+function SmartphoneIcon() { return <span className="simple-device-icon" aria-hidden="true">▯</span>; }
+
 function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -782,8 +803,14 @@ if (hostedRedirect) {
 } else {
   const authRedirectState = readAuthRedirectState(window.location.href);
   const root = createRoot(document.getElementById('root')!);
-  root.render(<main className="auth-shell"><div className="auth-card" role="status">Loading CodeForge securely…</div></main>);
-  void initializeSupabase()
-    .catch(() => undefined)
-    .finally(() => root.render(<App authRedirectState={authRedirectState}/>));
+  const isAppRoute = window.location.pathname === '/app' || window.location.pathname.startsWith('/app/');
+  const isAuthCallback = Boolean(window.location.search || window.location.hash);
+  if (!isAppRoute && !isAuthCallback) {
+    root.render(<LandingPage />);
+  } else {
+    root.render(<main className="auth-shell"><div className="auth-card" role="status">Loading CodeForge securely…</div></main>);
+    void initializeSupabase()
+      .catch(() => undefined)
+      .finally(() => root.render(<App authRedirectState={authRedirectState}/>));
+  }
 }
