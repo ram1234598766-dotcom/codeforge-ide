@@ -38,15 +38,14 @@ export function resolveSupabaseConfig(
 }
 
 /**
- * Normalize auth callbacks to the app origin. Dropping query/hash values prevents
- * stale OAuth parameters from being carried into a subsequent login attempt.
+ * CodeForge is a hosted-only app. Always send OAuth and email confirmation
+ * callbacks to its canonical production origin, regardless of the page origin
+ * or any query/hash values in the current browser URL.
  */
-export function getSupabaseRedirectUrl(currentUrl: string): string {
-  const url = new URL(currentUrl);
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw new Error('Supabase redirects require an HTTP(S) application URL.');
-  }
-  return url.origin;
+export const CODEFORGE_PRODUCTION_URL = 'https://codeforge-ide.vasudevaya.workers.dev';
+
+export function getSupabaseRedirectUrl(): string {
+  return CODEFORGE_PRODUCTION_URL;
 }
 
 /** Use the PKCE authorization-code exchange instead of URL-fragment tokens. */
