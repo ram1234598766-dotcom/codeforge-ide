@@ -19,9 +19,11 @@ jobs:
         with:
           node-version: 22.13.1
       - name: Install Expo dependencies
-        run: npm --prefix apps/mobile --workspaces=false install --no-audit --no-fund --package-lock=true
+        working-directory: apps/mobile
+        run: npm install --no-audit --no-fund --package-lock=true
       - name: Generate project-local lockfile for Expo diagnostics
-        run: npm --prefix apps/mobile --workspaces=false install --package-lock-only --ignore-scripts --no-audit --no-fund --package-lock=true
+        working-directory: apps/mobile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --package-lock=true
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
