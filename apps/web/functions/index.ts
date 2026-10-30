@@ -1,6 +1,6 @@
 import { getPublicSupabaseConfig } from './config';
 import { preventHtmlAssetCaching } from './assets';
-import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
+import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName, validateWorkspaceSearchQuery } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number }): Promise<{ response?: string; usage?: unknown }>;
@@ -126,6 +126,7 @@ async function api(request: Request, env: Env): Promise<Response> {
     env.CODEFORGE_DB.prepare("INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) SELECT ?,f.workspace_id,f.user_id,f.path,f.content,f.language FROM workspace_files f WHERE f.workspace_id=? AND f.path=? AND f.content=? AND EXISTS(SELECT 1 FROM code_change_requests c WHERE c.id=? AND c.workspace_id=? AND c.status='pending')").bind(versionId,workspaceId,change.file_path,change.original_content,changeId,workspaceId),
     env.CODEFORGE_DB.prepare("UPDATE workspace_files SET content=?,updated_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND path=? AND content=? AND EXISTS(SELECT 1 FROM code_change_requests WHERE id=? AND workspace_id=? AND status='pending')").bind(change.proposed_content,workspaceId,change.file_path,change.original_content,changeId,workspaceId),
     env.CODEFORGE_DB.prepare("UPDATE code_change_requests SET status='approved',updated_at=CURRENT_TIMESTAMP,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND status='pending' AND EXISTS(SELECT 1 FROM workspace_file_versions WHERE id=?) AND EXISTS(SELECT 1 FROM workspace_files WHERE workspace_id=? AND path=? AND content=?)").bind(changeId,workspaceId,versionId,workspaceId,change.file_path,change.proposed_content),
+    env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(workspaceId),
     env.CODEFORGE_DB.prepare("INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) SELECT ?,?,?,'code_change.approved',? WHERE EXISTS(SELECT 1 FROM code_change_requests WHERE id=? AND workspace_id=? AND status='approved')").bind(crypto.randomUUID(),userId,workspaceId,JSON.stringify({changeId,path:change.file_path}),changeId,workspaceId)
    ]);
    const final = await env.CODEFORGE_DB.prepare('SELECT status FROM code_change_requests WHERE id=? AND workspace_id=?').bind(changeId,workspaceId).first<{status:string}>();
@@ -288,6 +289,47 @@ async function api(request: Request, env: Env): Promise<Response> {
  const { workspaceId: id, resource } = route;
  const role = await workspaceRole(env,userId,id);
  if (!role) return reply({error:'Workspace not found'},404);
+ if (resource === 'search' && request.method === 'GET') {
+  const query = url.searchParams.get('q') || '';
+  const mode = url.searchParams.get('mode') || 'all';
+  const validation = validateWorkspaceSearchQuery(query,mode);
+  if (validation) return reply({error:validation},400);
+  const normalized = query.trim();
+  const revisionRow = await env.CODEFORGE_DB.prepare('SELECT revision FROM workspace_revisions WHERE workspace_id=?').bind(id).first<{revision:number}>();
+  const revision = revisionRow?.revision ?? 0;
+  const digest = await sha256Hex(mode+':'+normalized.toLocaleLowerCase());
+  const cacheKey = 'workspace-search:v1:'+userId+':'+id+':'+revision+':'+digest;
+  const cached = await env.CODEFORGE_KV.get(cacheKey);
+  if (cached !== null) {
+   try { return reply({results:JSON.parse(cached),cached:true}); } catch { /* Ignore malformed cache entries. */ }
+  }
+  const sql = mode === 'path'
+   ? 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 100'
+   : mode === 'content'
+    ? 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND instr(lower(content),lower(?))>0 ORDER BY path LIMIT 100'
+    : 'SELECT path,content FROM workspace_files WHERE workspace_id=? AND (instr(lower(path),lower(?))>0 OR instr(lower(content),lower(?))>0) ORDER BY path LIMIT 100';
+  const statement = env.CODEFORGE_DB.prepare(sql);
+  const result = mode === 'all'
+   ? await statement.bind(id,normalized,normalized).all<{path:string;content:string}>()
+   : await statement.bind(id,normalized).all<{path:string;content:string}>();
+  const rows = result.results || [];
+  const matches = rows.slice(0,50).map(file => {
+   const pathMatched = file.path.toLocaleLowerCase().includes(normalized.toLocaleLowerCase());
+   const hits:Array<{line:number;text:string}> = [];
+   if (mode !== 'path') {
+    for (const [index,line] of file.content.split('\\n').entries()) {
+     if (line.toLocaleLowerCase().includes(normalized.toLocaleLowerCase())) {
+      hits.push({line:index+1,text:line.trim().slice(0,320)});
+      if (hits.length >= 5) break;
+     }
+    }
+   }
+   if (mode === 'path' || (pathMatched && hits.length === 0)) hits.push({line:0,text:file.path});
+   return {path:file.path,matches:Math.max(hits.length,pathMatched ? 1 : 0),hits};
+  });
+  await env.CODEFORGE_KV.put(cacheKey,JSON.stringify(matches),{expirationTtl:60});
+  return reply({results:matches,cached:false});
+ }
  if (!resource && request.method === 'PATCH') {
   if (!canAdminWorkspaceRole(role)) return reply({error:'Workspace admin role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
@@ -357,6 +399,7 @@ async function api(request: Request, env: Env): Promise<Response> {
    await env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,version.path,current.content,current.language).run();
   }
   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,version.path,version.content,version.language).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.version.restored',JSON.stringify({path:version.path,versionId})).run();
   return reply({ok:true,path:version.path,content:version.content,language:version.language});
  }
@@ -388,6 +431,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const existing=await env.CODEFORGE_DB.prepare('SELECT id FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath).first();
   if(!existing) return reply({error:'File not found'},404);
   await env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.deleted',JSON.stringify({path:filePath})).run();
   return reply({ok:true,path:filePath});
  }
@@ -406,6 +450,7 @@ async function api(request: Request, env: Env): Promise<Response> {
    await env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,filePath,snapshot,snapshotLanguage).run();
   }
   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,filePath,content,language).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.saved',JSON.stringify({path:filePath,bytes:content.length})).run();
   return reply({ok:true,path:filePath});
  }
