@@ -23,3 +23,19 @@ export function validateAgentTask(task: unknown): string | null {
   if (trimmed.length > 12000) return 'Task must be 12,000 characters or fewer.';
   return null;
 }
+
+export function validateWorkspaceName(name: unknown): string | null {
+  if (typeof name !== 'string') return 'Workspace name must be text.';
+  const value = name.trim();
+  if (!value || value.length > 100) return 'Workspace name must be 1–100 characters.';
+  return null;
+}
+
+export function validateWorkspaceFilePath(path: unknown): string | null {
+  if (typeof path !== 'string') return 'File path must be text.';
+  const value = path.trim().replace(/^\/+/, '');
+  if (!value || value.length > 500 || value.split('/').some(part => !part || part === '.' || part === '..')) {
+    return 'Invalid file path.';
+  }
+  return null;
+}
