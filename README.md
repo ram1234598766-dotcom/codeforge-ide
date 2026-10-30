@@ -92,3 +92,7 @@ These capabilities are not represented as completed or simulated actions in the 
 ## Release pipeline
 
 Merges to `main` run the CodeForge Worker deployment workflow after the repository's deployment variables and secrets are configured. The workflow runs tests and type-checking, builds `apps/web/dist`, updates the Worker-side Supabase publishable-key secret, and deploys the Worker using the root `wrangler.toml` configuration. CI separately runs unit tests, type-checking, the production build, and a Wrangler dry-run.
+
+### OAuth providers
+
+Email/password authentication works with the configured Supabase project. GitHub and Google buttons use Supabase OAuth; enable each provider under Supabase Dashboard → Authentication → Providers and add `https://codeforge-ide.vasudevaya.workers.dev` to the project's allowed redirect URLs. The buttons will return a provider-configuration error until the corresponding OAuth client credentials and redirect settings are enabled.

@@ -64,3 +64,26 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 .preview-head button{border:0;background:transparent;color:#94a6b8}
 .preview-pane iframe{width:100%;height:100%;border:0;background:white}
 .top-actions button:disabled{opacity:.35;cursor:not-allowed}
+
+
+.provider-settings{padding:14px;overflow:auto;color:#d4deea}
+.provider-settings h3{margin:2px 0 8px;font-size:14px}
+.provider-settings p{font-size:10px;line-height:1.6;color:#8999ab;margin:0 0 14px}
+.provider-settings label{display:block;margin:12px 0;color:#aab8c7;font:9px 'DM Mono';letter-spacing:.4px}
+.provider-settings input,.provider-settings select{display:block;width:100%;margin-top:7px;padding:9px;border:1px solid #2c3a47;border-radius:6px;background:#091018;color:#e2e9f2;font:11px 'DM Mono'}
+.provider-save{width:100%;padding:10px;border:0;border-radius:6px;background:#d7f9e4;color:#0b2116;font-size:11px;font-weight:700;margin:7px 0 15px}
+.provider-save:disabled{opacity:.4}
+.provider-settings h4{font-size:10px;color:#91a4b7;margin:12px 0}
+.provider-row{display:flex;align-items:center;gap:6px;padding:9px 0;border-top:1px solid #263541}
+.provider-row div{flex:1;min-width:0}.provider-row b{display:block;font:10px 'DM Mono';text-transform:capitalize}.provider-row small{display:block;color:#78889b;font-size:9px;overflow-wrap:anywhere}
+.provider-row button{padding:5px 7px;border:1px solid #344552;border-radius:5px;background:#111c25;color:#b8c8d8;font-size:9px}
+.provider-message{padding:8px;border:1px solid #345a43;border-radius:5px;background:#11251b;color:#b7f4c9;font-size:10px;margin:10px 0}
+.provider-settings>small{display:block;color:#718398;font-size:9px;line-height:1.6;margin-top:12px}
+
+
+.oauth-divider{display:flex;align-items:center;gap:10px;margin:18px 0 10px;color:#68798b;font:9px 'DM Mono';letter-spacing:.8px}
+.oauth-divider:before,.oauth-divider:after{content:'';height:1px;flex:1;background:#263541}
+.oauth-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.oauth-buttons button{padding:10px;border:1px solid #34434f;border-radius:6px;background:#131c25;color:#d5e0eb;font-size:11px}
+.oauth-buttons button:hover{border-color:#8feeb5}
+.oauth-buttons button:disabled{opacity:.45}
