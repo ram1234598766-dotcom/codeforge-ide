@@ -48,6 +48,15 @@ function AuthScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const signInWithOAuth = async (provider: 'github' | 'google') => {
+    if (!supabase) return;
+    setBusy(true); setError('');
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin },
+    });
+    if (oauthError) { setError(oauthError.message); setBusy(false); }
+  };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!supabase) return;
@@ -67,6 +76,8 @@ function AuthScreen() {
     <label>Password<input type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} minLength={8} required value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters"/></label>
     {error && <div className="auth-error" role="alert">{error}</div>}
     <button className="auth-submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button>
+    <div className="oauth-divider">OR CONTINUE WITH</div>
+    <div className="oauth-buttons"><button type="button" disabled={busy} onClick={() => signInWithOAuth('github')}>GitHub</button><button type="button" disabled={busy} onClick={() => signInWithOAuth('google')}>Google</button></div>
     <button type="button" className="auth-switch" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}>{mode === 'signin' ? 'New to CodeForge? Create an account' : 'Already have an account? Sign in'}</button>
   </form></main>;
 }
