@@ -72,7 +72,7 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - GitHub and Google OAuth sign-in buttons via Supabase Auth (providers must be enabled in the Supabase dashboard)
 - Persisted AI run history and an activity timeline
 - Sandboxed browser HTML preview (not a server-side runtime)
-- Approval-gated workspace code changes with Monaco diff review, stale-file conflict detection, pre-change version snapshots, and audit events
+- Approval-gated workspace code changes: AI code blocks or editor drafts enter a Monaco diff review queue; approvals use stale-file conflict detection, pre-change version snapshots, and audit events
 - CI for unit tests, TypeScript checking, Vite build, and Wrangler dry-run
 - Merged-PR production deployment workflow
 
