@@ -57,3 +57,10 @@ export async function saveWorkspaceFile(id: string, path: string, content: strin
     body: JSON.stringify({ path, content, language }),
   });
 }
+
+export async function deleteWorkspaceFile(id: string, path: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${id}/files`, {
+    method: 'DELETE',
+    body: JSON.stringify({ path }),
+  });
+}
