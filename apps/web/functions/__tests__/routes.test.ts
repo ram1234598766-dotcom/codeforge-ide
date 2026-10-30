@@ -59,3 +59,26 @@ describe('normalizeSupabaseUrl', () => {
     expect(normalizeSupabaseUrl(undefined)).toBe('');
   });
 });
+
+import { validateWorkspaceFilePath, validateWorkspaceName } from '../routes';
+
+describe('validateWorkspaceName', () => {
+  it('accepts trimmed workspace names', () => {
+    expect(validateWorkspaceName(' My project ')).toBeNull();
+  });
+  it('rejects empty and oversized names', () => {
+    expect(validateWorkspaceName('   ')).toBe('Workspace name must be 1–100 characters.');
+    expect(validateWorkspaceName('x'.repeat(101))).toBe('Workspace name must be 1–100 characters.');
+  });
+});
+
+describe('validateWorkspaceFilePath', () => {
+  it('accepts relative nested file paths', () => {
+    expect(validateWorkspaceFilePath('/src/components/App.tsx')).toBeNull();
+  });
+  it('rejects traversal and empty segments', () => {
+    expect(validateWorkspaceFilePath('../secrets.txt')).toBe('Invalid file path.');
+    expect(validateWorkspaceFilePath('src//App.tsx')).toBe('Invalid file path.');
+    expect(validateWorkspaceFilePath('src/../secrets.txt')).toBe('Invalid file path.');
+  });
+});

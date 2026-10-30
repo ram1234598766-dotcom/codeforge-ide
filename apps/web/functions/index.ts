@@ -1,4 +1,4 @@
-import { normalizeAgentType, parseWorkspaceRoute, validateAgentTask } from './routes';
+import { normalizeAgentType, parseWorkspaceRoute, validateAgentTask, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number }): Promise<{ response?: string; usage?: unknown }>;
@@ -80,10 +80,12 @@ async function api(request: Request, env: Env): Promise<Response> {
  }
  if (path === '/api/workspaces' && request.method === 'POST') {
   let body: any; try { body = await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
-  const name = typeof body?.name === 'string' ? body.name.trim() : '';
-  if (!name || name.length > 100) return reply({error:'Name must be 1–100 characters'},400);
+  const nameError = validateWorkspaceName(body?.name);
+  if (nameError) return reply({error:nameError},400);
+  const name = body.name.trim();
   const id = crypto.randomUUID(), slug = name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,70) + '-' + id.slice(0,8);
   await env.CODEFORGE_DB.prepare('INSERT INTO workspaces(id,user_id,name,slug,description) VALUES(?,?,?,?,?)').bind(id,userId,name,slug,typeof body.description==='string'?body.description.slice(0,500):null).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.created',JSON.stringify({name})).run();
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()},201);
  }
  const route = parseWorkspaceRoute(path);
@@ -93,12 +95,15 @@ async function api(request: Request, env: Env): Promise<Response> {
  if (!own) return reply({error:'Workspace not found'},404);
  if (!resource && request.method === 'PATCH') {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
-  const name=typeof body?.name==='string'?body.name.trim():'';
-  if(!name || name.length>100) return reply({error:'Name must be 1–100 characters'},400);
+  const nameError=validateWorkspaceName(body?.name);
+  if(nameError) return reply({error:nameError},400);
+  const name=body.name.trim();
   await env.CODEFORGE_DB.prepare("UPDATE workspaces SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(name,id,userId).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.renamed',JSON.stringify({name})).run();
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()});
  }
  if (!resource && request.method === 'DELETE') {
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.deleted','{}').run();
   await env.CODEFORGE_DB.prepare('DELETE FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).run();
   await env.CODEFORGE_KV.delete('workspace-state:v1:'+userId+':'+id);
   return reply({ok:true});
@@ -123,12 +128,25 @@ async function api(request: Request, env: Env): Promise<Response> {
   const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at,updated_at FROM workspace_files WHERE workspace_id=? AND user_id=? ORDER BY path').bind(id,userId).all();
   return reply({files:result.results || []});
  }
+ if (resource === 'files' && request.method === 'DELETE') {
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const pathError=validateWorkspaceFilePath(body?.path);
+  if(pathError) return reply({error:pathError},400);
+  const filePath=body.path.trim().replace(/^\/+/, '');
+  const existing=await env.CODEFORGE_DB.prepare('SELECT id FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).first();
+  if(!existing) return reply({error:'File not found'},404);
+  await env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.deleted',JSON.stringify({path:filePath})).run();
+  return reply({ok:true,path:filePath});
+ }
  if (resource === 'files' && request.method === 'PUT') {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
-  const filePath=typeof body?.path==='string'?body.path.trim().replace(/^\/+/, ''):'', content=typeof body?.content==='string'?body.content:'';
-  if(!filePath || filePath.length>500 || filePath.split('/').some((p:string)=>!p || p==='.' || p==='..')) return reply({error:'Invalid path'},400);
+  const pathError=validateWorkspaceFilePath(body?.path);
+  if(pathError) return reply({error:pathError},400);
+  const filePath=body.path.trim().replace(/^\/+/, ''), content=typeof body?.content==='string'?body.content:'';
   if(content.length>1000000) return reply({error:'File too large'},413);
   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,filePath,content,typeof body.language==='string'?body.language.slice(0,40):null).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.saved',JSON.stringify({path:filePath,bytes:content.length})).run();
   return reply({ok:true,path:filePath});
  }
  return reply({error:'Method not allowed'},405);
