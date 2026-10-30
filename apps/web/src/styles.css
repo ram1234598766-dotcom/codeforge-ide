@@ -103,6 +103,11 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 @media(max-width:650px){.history-modal-body{grid-template-columns:1fr;grid-template-rows:150px 1fr}.version-list{border-right:0;border-bottom:1px solid #25333e}.history-modal-foot span{display:none}}
 
 
+.invite-link{display:flex;gap:5px;margin:8px 0 12px}
+.invite-link input{flex:1;min-width:0;font-size:9px}
+.invite-link button{border:1px solid #3b5947;border-radius:5px;background:#13251b;color:#b9f2c9;padding:0 9px;font-size:9px}
+
+
 .approval-section{display:grid;gap:8px;padding-bottom:12px;border-bottom:1px solid #24313c}
 .approval-section+.approval-section{padding-top:8px;border-bottom:0}
 .approval-item{border-color:#385b49;background:#101c18}
@@ -116,9 +121,3 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 .reject-change{border:1px solid #62434a;background:#25171b;color:#ffb7c0}
 .approve-change{border:1px solid #3e7957;background:#153321;color:#b7f3cb}
 .change-review-actions button:disabled{opacity:.5;cursor:not-allowed}
-
-
-.agent-code-proposals{display:grid;gap:6px;padding:9px;margin-top:8px;border-top:1px solid #2a3945;background:#101820}
-.agent-code-proposals>b{font:9px 'DM Mono';letter-spacing:.7px;color:#a2efbf}
-.agent-code-proposals button{display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid #345440;border-radius:5px;background:#14231b;color:#c6f3d4;text-align:left;font-size:10px}
-.agent-code-proposals button:disabled{opacity:.5;cursor:not-allowed}
