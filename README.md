@@ -78,3 +78,8 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - End-to-end, integration, accessibility, and security test coverage
 
 These capabilities are not represented as completed or simulated actions in the current UI.
+
+
+## Release pipeline
+
+Merges to `main` run the CodeForge Worker deployment workflow after the repository's deployment variables and secrets are configured. The workflow runs tests and type-checking, builds `apps/web/dist`, updates the Worker-side Supabase publishable-key secret, and deploys the Worker using the root `wrangler.toml` configuration. CI separately runs unit tests, type-checking, the production build, and a Wrangler dry-run.
