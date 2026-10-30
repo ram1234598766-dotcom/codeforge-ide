@@ -2,8 +2,8 @@ export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files'
 export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;
 
 export function parseWorkspaceChangeRoute(pathname: string): WorkspaceChangeRoute {
-  const path = pathname.replace(/\\/$/, '');
-  const match = path.match(/^\\/api\\/workspaces\\/([a-f0-9-]{36})\\/changes(?:\\/([a-f0-9-]{36})\\/(approve|reject))?$/i);
+  const path = pathname.replace(/\/$/, '');
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})\/changes(?:\/([a-f0-9-]{36})\/(approve|reject))?$/i);
   if (!match) return null;
   return { workspaceId: match[1], ...(match[2] ? { changeId: match[2], action: match[3] as 'approve' | 'reject' } : {}) };
 }
