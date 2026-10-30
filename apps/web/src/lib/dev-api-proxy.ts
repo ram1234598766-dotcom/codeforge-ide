@@ -1,3 +1,4 @@
+export const DEFAULT_CODEFORGE_DEV_PORT = 3000;
 export const DEFAULT_CODEFORGE_API_PROXY_TARGET = 'https://codeforge-ide.vasudevaya.workers.dev';
 
 export function getDevApiProxyTarget(override?: string): string {
