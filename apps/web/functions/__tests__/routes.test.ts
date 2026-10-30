@@ -121,16 +121,16 @@ import { parseWorkspaceChangeRoute, validateCodeChange } from '../routes';
 
 describe('parseWorkspaceChangeRoute', () => {
   it('matches the workspace change queue and optional trailing slash', () => {
-    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes\`)).toEqual({ workspaceId: id });
-    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\`)).toEqual({ workspaceId: id });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes`)).toEqual({ workspaceId: id });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/`)).toEqual({ workspaceId: id });
   });
   it('matches explicit approve and reject actions', () => {
     const changeId = '223e4567-e89b-12d3-a456-426614174000';
-    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${changeId}/approve\`)).toEqual({ workspaceId: id, changeId, action: 'approve' });
-    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${changeId}/reject\`)).toEqual({ workspaceId: id, changeId, action: 'reject' });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/approve`)).toEqual({ workspaceId: id, changeId, action: 'approve' });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/reject`)).toEqual({ workspaceId: id, changeId, action: 'reject' });
   });
   it('rejects unsupported actions and malformed identifiers', () => {
-    expect(parseWorkspaceChangeRoute(\`/api/workspaces/\${id}/changes/\${id}/apply\`)).toBeNull();
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${id}/apply`)).toBeNull();
     expect(parseWorkspaceChangeRoute('/api/workspaces/not-a-uuid/changes')).toBeNull();
   });
 });
