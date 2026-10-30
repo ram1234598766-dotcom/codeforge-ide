@@ -87,3 +87,17 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 .oauth-buttons button{padding:10px;border:1px solid #34434f;border-radius:6px;background:#131c25;color:#d5e0eb;font-size:11px}
 .oauth-buttons button:hover{border-color:#8feeb5}
 .oauth-buttons button:disabled{opacity:.45}
+
+
+.history-modal{width:min(1100px,94vw);height:min(760px,90vh);display:flex;flex-direction:column;border:1px solid #2d3d4b;border-radius:10px;background:#0b1219;overflow:hidden;box-shadow:0 25px 90px #000b}
+.history-modal-head,.history-modal-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;background:#101a23;border-bottom:1px solid #263541}
+.history-modal-head>div{display:grid;gap:4px}.history-modal-head b{font:10px 'DM Mono';letter-spacing:1px;color:#a7f1bf}.history-modal-head small{font:10px 'DM Mono';color:#8596a9}
+.history-modal-head>button{border:0;background:transparent;color:#a6b6c6}
+.history-modal-body{display:grid;grid-template-columns:240px 1fr;flex:1;min-height:0}
+.version-list{display:flex;flex-direction:column;gap:5px;padding:10px;overflow:auto;border-right:1px solid #25333e}
+.version-item{display:grid;gap:5px;padding:9px;border:1px solid #293945;border-radius:6px;background:#101922;color:#d6e0ea;text-align:left}
+.version-item.selected{border-color:#83dba6;background:#12251b}
+.version-item b{font:9px 'DM Mono'}.version-item small{font-size:9px;color:#7f90a2}
+.history-diff{min-width:0;min-height:0;background:#111}
+.history-modal-foot{border-top:1px solid #263541;border-bottom:0}.history-modal-foot span{color:#8293a5;font:9px 'DM Mono'}
+@media(max-width:650px){.history-modal-body{grid-template-columns:1fr;grid-template-rows:150px 1fr}.version-list{border-right:0;border-bottom:1px solid #25333e}.history-modal-foot span{display:none}}
