@@ -52,18 +52,16 @@ describe('resolveSupabaseConfig', () => {
 
 
 describe('Supabase OAuth callback configuration', () => {
-  it('uses only the current origin for callbacks, dropping query and hash fragments', () => {
-    expect(getSupabaseRedirectUrl('https://codeforge-ide.vasudevaya.workers.dev/?next=%2Fsettings#old-token'))
-      .toBe('https://codeforge-ide.vasudevaya.workers.dev');
+  it('always returns to the hosted CodeForge app, never localhost', () => {
+    expect(getSupabaseRedirectUrl()).toBe('https://codeforge-ide.vasudevaya.workers.dev');
   });
 
-  it('keeps localhost callbacks local during development', () => {
-    expect(getSupabaseRedirectUrl('http://localhost:3000/#access_token=untrusted'))
-      .toBe('http://localhost:3000');
-  });
-
-  it('rejects non-HTTP callback URLs', () => {
-    expect(() => getSupabaseRedirectUrl('javascript:alert(1)')).toThrow('HTTP(S)');
+  it('uses the same canonical callback for Google and GitHub', () => {
+    const redirectTo = getSupabaseRedirectUrl();
+    expect(['google', 'github'].map(() => redirectTo)).toEqual([
+      'https://codeforge-ide.vasudevaya.workers.dev',
+      'https://codeforge-ide.vasudevaya.workers.dev',
+    ]);
   });
 
   it('uses PKCE and detects the returned authorization code', () => {
