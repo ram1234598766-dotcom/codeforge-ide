@@ -250,7 +250,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   ];
   for (const item of fileInputs) {
    if (workspaceFiles.length >= 10 || !item || typeof item.path !== 'string' || typeof item.content !== 'string') continue;
-   const safePath = item.path.trim().replace(/^\\/+/, '');
+   const safePath = item.path.trim().replace(/^\/+/, '');
    if (validateWorkspaceFilePath(safePath)) continue;
    const key = safePath.toLocaleLowerCase();
    if (seenFiles.has(key)) continue;
