@@ -81,14 +81,15 @@ async function api(request: Request, env: Env): Promise<Response> {
   const role = await workspaceRole(env,userId,workspaceId);
   if (!role) return reply({error:'Workspace not found'},404);
   if (!changeId && request.method === 'GET') {
-   const result = await env.CODEFORGE_DB.prepare('SELECT id,file_path,original_content,proposed_content,status,created_at,updated_at FROM code_change_requests WHERE workspace_id=? ORDER BY created_at DESC LIMIT 30').bind(workspaceId).all();
+   const result = await env.CODEFORGE_DB.prepare('SELECT id,file_path,original_content,proposed_content,status,created_at,updated_at FROM code_change_requests WHERE workspace_id=? AND status='pending' ORDER BY created_at DESC LIMIT 10').bind(workspaceId).all();
    return reply({changes:result.results || []});
   }
   if (!canEditWorkspaceRole(role)) return reply({error:'Workspace editor role required'},403);
   if (!changeId && request.method === 'POST') {
-   const length = Number(request.headers.get('content-length') || '0');
-   if (length > 1_100_000) return reply({error:'Change request is too large.'},413);
-   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+   let payload:ArrayBuffer;
+   try { payload = await request.arrayBuffer(); } catch { return reply({error:'Invalid request body'},400); }
+   if (payload.byteLength > 1_100_000) return reply({error:'Change request is too large.'},413);
+   let body:any; try { body=JSON.parse(new TextDecoder().decode(payload)); } catch { return reply({error:'Invalid JSON'},400); }
    const validation = validateCodeChange(body?.path,body?.proposedContent);
    if (validation) return reply({error:validation},400);
    const filePath = body.path.trim().replace(/^\/+/, '');
