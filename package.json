@@ -1,0 +1,1 @@
+{"name":"codeforge-ide","private":true,"version":"0.1.0","packageManager":"pnpm@9.15.0","scripts":{"dev:web":"pnpm --filter @codeforge/web dev","build":"pnpm --filter @codeforge/web build","dev:desktop":"pnpm --filter @codeforge/desktop dev","dev:mobile":"pnpm --filter @codeforge/mobile start"},"devDependencies":{"typescript":"^5.7.3"},"workspaces":["apps/*","packages/*"]}
