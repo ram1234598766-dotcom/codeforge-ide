@@ -57,7 +57,7 @@ jobs:
           Copy-Item (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") release/CodeForge-SelfSigned.cer
           Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256 | Format-List | Out-File release/SHA256-Windows.txt
           $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
-          if ($signature.Status -ne "Valid") { throw "Signed installer verification failed: $($signature.Status)" }
+          if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint -or $signature.SignatureStatus -ne "Valid") { throw "Signed installer verification failed: $($signature.Status) / $($signature.SignatureStatus)" }
           Remove-Item $pfxPath -Force
       - uses: actions/upload-artifact@v4
         with:
