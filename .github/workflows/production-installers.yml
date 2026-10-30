@@ -105,7 +105,7 @@ jobs:
         env:
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
-          node -e "const fs=require('node:fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.android.versionCode=Number(process.env.BUILD_NUMBER);j.expo.version='1.0.'+process.env.BUILD_NUMBER;fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');"
+          node -e "const fs=require('node:fs');const p='app.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.expo.android.versionCode=Number(process.env.BUILD_NUMBER);j.expo.version='1.0.'+process.env.BUILD_NUMBER;fs.writeFileSync(p,JSON.stringify(j,null,2));"
       - name: Generate Android project
         working-directory: apps/mobile
         env:
