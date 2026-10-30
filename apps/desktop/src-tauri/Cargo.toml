@@ -1,0 +1,12 @@
+[package]
+name = "codeforge-desktop"
+version = "0.1.0"
+description = "CodeForge desktop application"
+authors = ["CodeForge"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+tauri = { version = "2" }
