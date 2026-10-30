@@ -227,7 +227,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const nameError=validateWorkspaceName(body?.name);
   if(nameError) return reply({error:nameError},400);
   const name=body.name.trim();
-  await env.CODEFORGE_DB.prepare("UPDATE workspaces SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,id,userId).run();
+  await env.CODEFORGE_DB.prepare("UPDATE workspaces SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,id).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.renamed',JSON.stringify({name})).run();
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=?').bind(id).first()});
  }
@@ -275,7 +275,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const filePath=url.searchParams.get('path') || '';
   const pathError=validateWorkspaceFilePath(filePath);
   if(pathError) return reply({error:pathError},400);
-  const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at FROM workspace_file_versions WHERE workspace_id=? AND user_id=? AND path=? ORDER BY created_at DESC LIMIT 30').bind(id,userId,filePath.replace(/^\/+/, '')).all();
+  const result=await env.CODEFORGE_DB.prepare('SELECT id,path,content,language,created_at FROM workspace_file_versions WHERE workspace_id=? AND path=? ORDER BY created_at DESC LIMIT 30').bind(id,filePath.replace(/^\/+/, '')).all();
   return reply({versions:result.results || []});
  }
  if (resource === 'versions' && request.method === 'POST') {
