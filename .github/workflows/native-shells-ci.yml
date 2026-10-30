@@ -1,5 +1,9 @@
 name: Native shells CI
 
+concurrency:
+  group: native-shells-ci-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
 on:
   pull_request:
   push:
@@ -8,21 +12,24 @@ on:
 jobs:
   mobile:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22.13.1
-      - name: Install Expo dependencies
-        run: npm --prefix apps/mobile install --no-audit --no-fund
+      - name: Install Expo dependencies and create lockfile
+        working-directory: apps/mobile
+        run: npm install --no-audit --no-fund --package-lock=true
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
       - name: Export Android and iOS bundles
-        run: npm --prefix apps/mobile run build
+        run: npx --yes pnpm@9.15.0 --filter @codeforge/mobile run build
 
   desktop:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

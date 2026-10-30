@@ -12,7 +12,7 @@ CodeForge is an AI-native development environment. The web client is a React + T
 
 - Supabase Auth verifies user identity. The browser uses only the Supabase publishable key.
 - The Cloudflare Worker validates the user's Supabase access token before accessing user data.
-- D1 stores workspaces, workspace state, files, agent-run metadata, and audit events.
+- D1 stores workspaces, workspace state, files, agent-run metadata, audit events, collaboration membership/invites, provider credentials, file versions, and approval requests.
 - KV caches workspace state for short periods; D1 is the source of truth.
 - Worker Static Assets serves the Vite build and routes `/api/*` through the Worker.
 
@@ -20,7 +20,7 @@ CodeForge is an AI-native development environment. The web client is a React + T
 
 The Worker configuration binds the existing D1 database named `k` and KV namespace titled `k`. The D1 schema migration is in `migrations/0001_initial.sql`. The schema was applied to the existing D1 database during this setup.
 
-The D1 database currently has tables for workspaces, workspace state, workspace files, agent runs, and audit events.
+The D1 schema is versioned in `migrations/`; migration 0005 adds the approval-gated code-change queue.
 
 ## Local development and validation
 
@@ -72,6 +72,7 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - GitHub and Google OAuth sign-in buttons via Supabase Auth (providers must be enabled in the Supabase dashboard)
 - Persisted AI run history and an activity timeline
 - Sandboxed browser HTML preview (not a server-side runtime)
+- Approval-gated workspace code changes: editor drafts enter a Monaco side-by-side diff review queue; approvals enforce workspace roles, reject stale file versions, preserve pre-change snapshots, invalidate cached state, and emit audit events
 - CI for unit tests, TypeScript checking, Vite build, and Wrangler dry-run
 - Merged-PR production deployment workflow
 
@@ -86,13 +87,12 @@ Build commands: `pnpm build:desktop` and `pnpm build:mobile`. The `Native shells
 
 ## Still to build
 
-- Encrypted per-user BYOK model-key vault and additional model providers
-- Tool-enabled agents with approval-gated code edits
+- Agent-generated patch extraction and automatic proposal creation from model output
 - Isolated terminal, test, and build execution using a remote sandbox
 - GitHub repository connection, clone/import, status, commits, branches, and pull requests
 - Semantic repository indexing and cross-file search
 - Realtime collaboration
-- Desktop and native mobile clients
+- Native desktop/mobile editor integrations, local filesystem access, and app-store packaging
 - Comprehensive end-to-end, integration, accessibility, and security test coverage
 
 These capabilities are not represented as completed or simulated actions in the current UI.

@@ -115,3 +115,35 @@ describe('workspace role permissions', () => {
     expect(canDeleteWorkspaceRole('admin')).toBe(false);
   });
 });
+
+
+import { parseWorkspaceChangeRoute, validateCodeChange } from '../routes';
+
+describe('parseWorkspaceChangeRoute', () => {
+  it('matches the workspace change queue and optional trailing slash', () => {
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes`)).toEqual({ workspaceId: id });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/`)).toEqual({ workspaceId: id });
+  });
+  it('matches explicit approve and reject actions', () => {
+    const changeId = '223e4567-e89b-12d3-a456-426614174000';
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/approve`)).toEqual({ workspaceId: id, changeId, action: 'approve' });
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${changeId}/reject`)).toEqual({ workspaceId: id, changeId, action: 'reject' });
+  });
+  it('rejects unsupported actions and malformed identifiers', () => {
+    expect(parseWorkspaceChangeRoute(`/api/workspaces/${id}/changes/${id}/apply`)).toBeNull();
+    expect(parseWorkspaceChangeRoute('/api/workspaces/not-a-uuid/changes')).toBeNull();
+  });
+});
+
+describe('validateCodeChange', () => {
+  it('accepts a valid relative path and text content', () => {
+    expect(validateCodeChange('src/App.tsx', 'export default function App() {}')).toBeNull();
+  });
+  it('rejects traversal paths and non-text content', () => {
+    expect(validateCodeChange('../secrets.txt', 'x')).toBe('Invalid file path.');
+    expect(validateCodeChange('src/App.tsx', null)).toBe('Proposed content must be text.');
+  });
+  it('enforces a one-megabyte content limit', () => {
+    expect(validateCodeChange('src/App.tsx', 'x'.repeat(1_000_001))).toBe('Proposed content must be 1 MB or smaller.');
+  });
+});

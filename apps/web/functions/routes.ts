@@ -7,6 +7,23 @@ export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | undefined };
 }
 
+export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;
+
+export function parseWorkspaceChangeRoute(pathname: string): WorkspaceChangeRoute {
+  const path = pathname.replace(/\/$/, '');
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})\/changes(?:\/([a-f0-9-]{36})\/(approve|reject))?$/i);
+  if (!match) return null;
+  return { workspaceId: match[1], ...(match[2] ? { changeId: match[2], action: match[3] as 'approve' | 'reject' } : {}) };
+}
+
+export function validateCodeChange(path: unknown, content: unknown): string | null {
+  const pathError = validateWorkspaceFilePath(path);
+  if (pathError) return pathError;
+  if (typeof content !== 'string') return 'Proposed content must be text.';
+  if (new TextEncoder().encode(content).byteLength > 1_000_000) return 'Proposed content must be 1 MB or smaller.';
+  return null;
+}
+
 export const AGENT_TYPES = ['planner', 'coder', 'reviewer', 'debugger', 'tester', 'refactorer', 'security', 'documentation'] as const;
 export type AgentType = typeof AGENT_TYPES[number];
 

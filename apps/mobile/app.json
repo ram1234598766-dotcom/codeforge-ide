@@ -6,14 +6,12 @@
     "orientation": "default",
     "scheme": "codeforge",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.codeforge.ide",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.codeforge.ide",
-      "edgeToEdgeEnabled": true
+      "package": "com.codeforge.ide"
     }
   }
 }
