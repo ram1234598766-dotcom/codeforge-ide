@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   BackHandler,
   Pressable,
-  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -38,8 +37,7 @@ export default function App() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#080d13" />
-      <ExpoStatusBar style="light" />
+      <ExpoStatusBar style="light" backgroundColor="#080d13" />
       <WebView
         key={reloadKey}
         ref={webView}
