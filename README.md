@@ -47,7 +47,7 @@ Set these build-time variables in the Worker build environment:
 
 The Supabase publishable key is intended for public clients. Never use a Supabase service-role key in the browser or commit private credentials.
 
-The `.github/workflows/deploy-worker.yml` workflow deploys on pushes to `main` after configuration is present. Configure these repository settings:
+The `.github/workflows/deploy-worker.yml` workflow deploys after a pull request is merged into `main` (and can also be started manually with `workflow_dispatch`). Configure these repository settings:
 
 - Repository variable `VITE_SUPABASE_URL`
 - Repository secrets `VITE_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_PUBLISHABLE_KEY` (same current Supabase publishable key)
@@ -55,27 +55,33 @@ The `.github/workflows/deploy-worker.yml` workflow deploys on pushes to `main` a
 
 The Cloudflare token should be narrowly scoped to the CodeForge account with Workers Scripts Edit, D1 Edit, and Workers KV Storage Edit. Do not reuse any token previously pasted into chat; revoke it and create a replacement first.
 
-## Implemented in this foundation branch
+## Implemented
 
 - Supabase email/password sign-in and account creation
-- Authenticated Worker API
-- D1 workspace creation and listing
-- D1 workspace file persistence
-- D1 workspace state persistence
-- KV cache for workspace state
-- Monaco editor with save-to-D1
-- CI workflow for TypeScript checking, Vite build, and Wrangler dry-run
+- Authenticated Worker APIs with per-user ownership checks
+- D1 workspaces, workspace files, workspace state, agent runs, and audit events
+- KV caching for workspace state and a basic per-user AI request limit
+- Monaco editor with multi-file tabs, D1 saving, and workspace-state restoration
+- Workspace creation, rename, deletion, file creation, deletion, and path search
+- Ctrl/Cmd+S save and Ctrl/Cmd+P file search shortcuts
+- Cloudflare Workers AI coding agents: coder, planner, reviewer, debugger, tester, refactorer, security, and documentation
+- Persisted AI run history and an activity timeline
+- Sandboxed browser HTML preview (not a server-side runtime)
+- CI for unit tests, TypeScript checking, Vite build, and Wrangler dry-run
+- Merged-PR production deployment workflow
+
+Workers AI requests are usage-based and may incur Cloudflare charges. Agent responses are suggestions: they do not directly edit files, execute shell commands, or deploy code.
 
 ## Still to build
 
-- AI provider execution, BYO model keys, and multi-agent orchestration
-- Approval workflow and agent-run API/UI
-- Sandboxed terminal and test/build runner
-- Git status, commits, branches, and pull requests
-- Repository indexing and cross-file search
+- Encrypted per-user BYOK model-key vault and additional model providers
+- Tool-enabled agents with approval-gated code edits
+- Isolated terminal, test, and build execution using a remote sandbox
+- GitHub repository connection, clone/import, status, commits, branches, and pull requests
+- Semantic repository indexing and cross-file search
 - Realtime collaboration
-- Desktop and mobile clients
-- End-to-end, integration, accessibility, and security test coverage
+- Desktop and native mobile clients
+- Comprehensive end-to-end, integration, accessibility, and security test coverage
 
 These capabilities are not represented as completed or simulated actions in the current UI.
 
