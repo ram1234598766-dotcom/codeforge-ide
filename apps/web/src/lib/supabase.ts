@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { resolveSupabaseConfig, type SupabaseConfigValues } from './supabase-config';
+import { getSupabaseAuthOptions, resolveSupabaseConfig, type SupabaseConfigValues } from './supabase-config';
 
 const buildConfig = {
   url: import.meta.env.VITE_SUPABASE_URL as string | undefined,
@@ -13,7 +13,7 @@ function applySupabaseConfig(config: SupabaseConfigValues): void {
   supabaseConfig = config;
   supabase = config.configured
     ? createClient(config.url, config.publishableKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        auth: getSupabaseAuthOptions(),
       })
     : null;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSupabaseConfig } from './supabase-config';
+import { getSupabaseAuthOptions, getSupabaseRedirectUrl, resolveSupabaseConfig } from './supabase-config';
 
 describe('resolveSupabaseConfig', () => {
   it('uses Worker runtime configuration when Vite build values are absent', () => {
@@ -46,6 +46,32 @@ describe('resolveSupabaseConfig', () => {
       url: 'https://project.supabase.co',
       publishableKey: '',
       configured: false,
+    });
+  });
+});
+
+
+describe('Supabase OAuth callback configuration', () => {
+  it('uses only the current origin for callbacks, dropping query and hash fragments', () => {
+    expect(getSupabaseRedirectUrl('https://codeforge-ide.vasudevaya.workers.dev/?next=%2Fsettings#old-token'))
+      .toBe('https://codeforge-ide.vasudevaya.workers.dev');
+  });
+
+  it('keeps localhost callbacks local during development', () => {
+    expect(getSupabaseRedirectUrl('http://localhost:3000/#access_token=untrusted'))
+      .toBe('http://localhost:3000');
+  });
+
+  it('rejects non-HTTP callback URLs', () => {
+    expect(() => getSupabaseRedirectUrl('javascript:alert(1)')).toThrow('HTTP(S)');
+  });
+
+  it('uses PKCE and detects the returned authorization code', () => {
+    expect(getSupabaseAuthOptions()).toEqual({
+      flowType: 'pkce',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     });
   });
 });

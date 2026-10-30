@@ -5,6 +5,7 @@ import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranc
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, initializeSupabase, supabase, supabaseConfig } from './lib/supabase';
+import { getSupabaseRedirectUrl } from './lib/supabase-config';
 import {
   createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState, getProfile, updateProfile, listWorkspaceMembers, createWorkspaceInvite, removeWorkspaceMember, acceptWorkspaceInvite,
   type Workspace,
@@ -63,7 +64,7 @@ function AuthScreen() {
     setBusy(true); setError('');
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: window.location.href },
+      options: { redirectTo: getSupabaseRedirectUrl(window.location.href) },
     });
     if (oauthError) { setError(oauthError.message); setBusy(false); }
   };
@@ -73,7 +74,7 @@ function AuthScreen() {
     setBusy(true); setError('');
     const result = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.href } });
+      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: getSupabaseRedirectUrl(window.location.href) } });
     if (result.error) setError(result.error.message);
     else if (mode === 'signup' && !result.data.session) setError('Check your email to confirm your account, then sign in.');
     setBusy(false);
