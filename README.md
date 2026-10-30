@@ -72,6 +72,7 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - GitHub and Google OAuth sign-in buttons via Supabase Auth (providers must be enabled in the Supabase dashboard)
 - Persisted AI run history and an activity timeline
 - Sandboxed browser HTML preview (not a server-side runtime)
+- Approval-gated workspace code changes with Monaco diff review, stale-file conflict detection, pre-change version snapshots, and audit events
 - CI for unit tests, TypeScript checking, Vite build, and Wrangler dry-run
 - Merged-PR production deployment workflow
 
@@ -80,7 +81,7 @@ Workers AI requests are usage-based and may incur Cloudflare charges. Agent resp
 ## Still to build
 
 - Encrypted per-user BYOK model-key vault and additional model providers
-- Tool-enabled agents with approval-gated code edits
+- Agent-generated patch extraction and tool-enabled multi-step agent edits
 - Isolated terminal, test, and build execution using a remote sandbox
 - GitHub repository connection, clone/import, status, commits, branches, and pull requests
 - Semantic repository indexing and cross-file search
