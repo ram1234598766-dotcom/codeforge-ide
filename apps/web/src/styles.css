@@ -16,3 +16,12 @@
 .notice{border-color:#344e43;background:#12231c;color:#b9f4cb}
 @media(max-width:1000px){.workspace-select{max-width:170px}}
 @media(max-width:700px){.workspace-select{display:none}.monaco-wrap{height:calc(100% - 75px)}}
+
+
+.agent-select{width:100%;margin:4px 0 12px;padding:8px 10px;border:1px solid #293846;border-radius:6px;background:#0b1118;color:#d6e2ef;font:11px 'DM Mono'}
+.ai-cost-note{display:block;margin-top:12px;color:#738296;font-size:9px;line-height:1.5}
+.agent-output{margin:12px 14px;padding:12px;border:1px solid #2b3d49;border-radius:8px;background:#0c141b;min-height:80px;max-height:340px;overflow:auto}
+.agent-output>div{display:flex;align-items:center;justify-content:space-between;color:#91a1b5;font:9px 'DM Mono';letter-spacing:.8px}
+.agent-output button{border:1px solid #30443e;border-radius:5px;background:#13251d;color:#a8f6c1;padding:4px 8px;font-size:10px}
+.agent-output pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#d5dfeb;font:11px/1.65 'DM Mono',monospace;margin:12px 0 0}
+.prompt-input button:disabled{opacity:.45}
