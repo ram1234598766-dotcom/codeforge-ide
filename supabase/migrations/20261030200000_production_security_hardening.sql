@@ -11,12 +11,19 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $function$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.workspace_members wm
-    WHERE wm.workspace_id = target_workspace
-      AND wm.user_id = (SELECT auth.uid())
-  );
+  SELECT
+    EXISTS (
+      SELECT 1
+      FROM public.workspace_members wm
+      WHERE wm.workspace_id = target_workspace
+        AND wm.user_id = (SELECT auth.uid())
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM public.workspaces w
+      WHERE w.id = target_workspace
+        AND w.owner_id = (SELECT auth.uid())
+    );
 $function$;
 
 REVOKE ALL ON FUNCTION private.is_workspace_member(uuid) FROM PUBLIC, anon;
@@ -194,7 +201,10 @@ WITH CHECK (
 CREATE POLICY "users update own runs"
 ON public.agent_runs FOR UPDATE TO authenticated
 USING (user_id = (SELECT auth.uid()))
-WITH CHECK (user_id = (SELECT auth.uid()));
+WITH CHECK (
+  user_id = (SELECT auth.uid())
+  AND private.is_workspace_member(workspace_id)
+);
 
 CREATE POLICY "members read audit"
 ON public.audit_events FOR SELECT TO authenticated

@@ -118,3 +118,13 @@ The Worker secret `APP_ENCRYPTION_KEY` is a randomly generated 256-bit AES-GCM k
 ### OAuth setup
 
 GitHub and Google OAuth buttons require those providers to be enabled under Supabase Dashboard → Authentication → Providers, with the CodeForge Worker origin added to the allowed redirect URLs. Email/password sign-in does not depend on OAuth provider configuration.
+
+
+## Production authentication and security
+
+- The canonical hosted auth callback is `https://codeforge-ide.vasudevaya.workers.dev/`. Keep it as the Supabase **Site URL** and an allowed redirect URL (with the trailing slash). Do not use localhost callbacks for this hosted application.
+- Configure Google and GitHub under Supabase Authentication → Sign In / Providers, including each provider's OAuth client credentials and the exact Supabase callback URI shown by the provider settings. CodeForge sends the final callback to its canonical hosted origin.
+- Email confirmation, OAuth, and password recovery all return to the same hosted origin. The sign-in screen supports email/password sign-in, signup, resend-confirmation, forgot-password, and password-update recovery.
+- Enable leaked-password protection in Supabase Authentication → Settings → Password Security. Supabase documents this control as a project-level Auth setting and notes its plan availability: https://supabase.com/docs/guides/auth/password-security.
+- The SQL hardening migration is versioned under `supabase/migrations/`. It removes public RPC execution from trigger-only security-definer functions, moves the workspace membership helper into a non-exposed schema, restricts RLS policies to authenticated users, prevents viewer-role writes, and adds missing foreign-key indexes.
+- Keep the Cloudflare Worker and Supabase publishable key as separate configuration concerns. The publishable key is safe for browser use; never place Supabase secret/service-role credentials in Vite variables or browser bundles.

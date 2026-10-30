@@ -6,12 +6,12 @@ export interface AuthRedirectState {
 
 const AUTH_QUERY_KEYS = [
   'code', 'error', 'error_code', 'error_description', 'error_uri',
-  'provider_token', 'type', 'access_token', 'refresh_token', 'expires_in', 'token_type',
+  'provider_token', 'type', 'state', 'access_token', 'refresh_token', 'expires_in', 'token_type',
 ] as const;
 
 const AUTH_HASH_KEYS = new Set([
   'access_token', 'refresh_token', 'expires_in', 'expires_at', 'token_type',
-  'provider_token', 'error', 'error_code', 'error_description', 'code',
+  'provider_token', 'error', 'error_code', 'error_description', 'code', 'type',
 ]);
 
 export function readAuthRedirectState(currentHref: string): AuthRedirectState {
