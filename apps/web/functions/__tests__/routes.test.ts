@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseWorkspaceRoute } from '../routes';
-
-const id = '123e4567-e89b-12d3-a456-426614174000';
-
+import { parseWorkspaceRoute, validateWorkspaceSearchQuery } from '../routes';
 describe('parseWorkspaceRoute', () => {
   it('matches a workspace root route for rename and delete', () => {
     expect(parseWorkspaceRoute(`/api/workspaces/${id}`)).toEqual({ workspaceId: id, resource: undefined });
@@ -145,5 +142,32 @@ describe('validateCodeChange', () => {
   });
   it('enforces a one-megabyte content limit', () => {
     expect(validateCodeChange('src/App.tsx', 'x'.repeat(1_000_001))).toBe('Proposed content must be 1 MB or smaller.');
+  });
+});
+
+const id = '123e4567-e89b-12d3-a456-426614174000';
+
+describe('workspace search route', () => {
+  it('matches an authenticated workspace search route', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/search`)).toEqual({ workspaceId: id, resource: 'search' });
+  });
+  it('rejects malformed workspace search routes', () => {
+    expect(parseWorkspaceRoute('/api/workspaces/not-a-uuid/search')).toBeNull();
+  });
+});
+
+describe('validateWorkspaceSearchQuery', () => {
+  it('accepts bounded all, path, and content searches', () => {
+    expect(validateWorkspaceSearchQuery('token', 'all')).toBeNull();
+    expect(validateWorkspaceSearchQuery('src/', 'path')).toBeNull();
+    expect(validateWorkspaceSearchQuery('TODO', 'content')).toBeNull();
+  });
+  it('rejects too-short, non-text, and oversized queries', () => {
+    expect(validateWorkspaceSearchQuery(' ', 'all')).toBe('Enter at least 2 characters to search.');
+    expect(validateWorkspaceSearchQuery(null, 'all')).toBe('Search query must be text.');
+    expect(validateWorkspaceSearchQuery('x'.repeat(121), 'all')).toBe('Search query must be 120 characters or fewer.');
+  });
+  it('rejects unknown search modes', () => {
+    expect(validateWorkspaceSearchQuery('token', 'regex')).toBe('Search mode must be all, content, or path.');
   });
 });
