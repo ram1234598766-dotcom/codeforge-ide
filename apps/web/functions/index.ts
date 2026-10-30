@@ -132,7 +132,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
-  const filePath=body.path.trim().replace(/^\\/+/, '');
+  const filePath=body.path.trim().replace(/^\/+/, '');
   const existing=await env.CODEFORGE_DB.prepare('SELECT id FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).first();
   if(!existing) return reply({error:'File not found'},404);
   await env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).run();
@@ -143,7 +143,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
-  const filePath=body.path.trim().replace(/^\\/+/, ''), content=typeof body?.content==='string'?body.content:'';
+  const filePath=body.path.trim().replace(/^\/+/, ''), content=typeof body?.content==='string'?body.content:'';
   if(content.length>1000000) return reply({error:'File too large'},413);
   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,filePath,content,typeof body.language==='string'?body.language.slice(0,40):null).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.saved',JSON.stringify({path:filePath,bytes:content.length})).run();
