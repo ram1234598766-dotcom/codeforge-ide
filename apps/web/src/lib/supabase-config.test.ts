@@ -49,3 +49,25 @@ describe('resolveSupabaseConfig', () => {
     });
   });
 });
+
+
+describe('Supabase OAuth callback configuration', () => {
+  it('uses only the current origin for callbacks, dropping query and hash fragments', () => {
+    expect(getSupabaseRedirectUrl('https://codeforge-ide.vasudevaya.workers.dev/?next=%2Fsettings#old-token'))
+      .toBe('https://codeforge-ide.vasudevaya.workers.dev');
+  });
+
+  it('keeps localhost callbacks local during development', () => {
+    expect(getSupabaseRedirectUrl('http://localhost:3000/#access_token=untrusted'))
+      .toBe('http://localhost:3000');
+  });
+
+  it('uses PKCE and detects the returned authorization code', () => {
+    expect(getSupabaseAuthOptions()).toEqual({
+      flowType: 'pkce',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    });
+  });
+});
