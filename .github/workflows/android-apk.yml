@@ -1,4 +1,4 @@
-name: CodeForge Android APK
+name: CodeForge Android Preview APK
 
 on:
   pull_request:
@@ -87,12 +87,12 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" sign \
             --ks release/codeforge-release.jks --ks-key-alias codeforge \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
-            --out release/CodeForge.apk release/CodeForge-unaligned.apk
+            --out release/CodeForge-preview.apk release/CodeForge-unaligned.apk
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
           sha256sum release/CodeForge.apk > release/SHA256SUMS.txt
           printf 'COMMIT=%s\n' "$GITHUB_SHA" > release/BUILD-METADATA.txt
           printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
-          printf 'SIGNING=verified Android APK Signature Scheme\n' >> release/BUILD-METADATA.txt
+          printf 'SIGNING=temporary preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
           rm -f release/CodeForge-unaligned.apk release/codeforge-release.jks
 
       - name: Upload signed APK
