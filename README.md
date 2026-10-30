@@ -28,6 +28,11 @@ The D1 schema is versioned in `migrations/`; migration 0005 adds the approval-ga
 npm --prefix apps/web install
 cp apps/web/.env.example apps/web/.env.local
 npm --prefix apps/web run dev
+```
+
+The Vite development server proxies `/api/*` to the deployed CodeForge Worker by default. This is required so a local OAuth callback can load `/api/config`, exchange its PKCE code on the same browser origin, and make authenticated Worker API calls. Set `VITE_CODEFORGE_API_PROXY_TARGET` in `apps/web/.env.local` to use a staging Worker or a local `wrangler dev` server instead. The default target is the production Worker, so local workspace changes will be saved to the production D1 database unless you override it.
+
+```
 npm --prefix apps/web test
 npm --prefix apps/web run typecheck
 npm --prefix apps/web run build
