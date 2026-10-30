@@ -6,6 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, initializeSupabase, supabase, supabaseConfig } from './lib/supabase';
 import { getHostedAppRedirectUrl, getSupabaseRedirectUrl } from './lib/supabase-config';
+import { getFriendlyAuthError, readAuthRedirectState, type AuthRedirectState } from './lib/auth-flow';
 import {
   createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState, getProfile, updateProfile, listWorkspaceMembers, createWorkspaceInvite, removeWorkspaceMember, acceptWorkspaceInvite,
   type Workspace,
@@ -56,49 +57,199 @@ const languageFor = (path: string) => {
   return ({ ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', json: 'json', css: 'css', html: 'html', md: 'markdown', sql: 'sql', py: 'python' } as Record<string, string>)[ext || ''] || 'plaintext';
 };
 
-function AuthScreen() {
+type AuthMode = 'signin' | 'signup' | 'reset' | 'recovery';
+
+function AuthScreen({
+  initialMessage,
+  recoveryMode,
+  onRecoveryComplete,
+}: {
+  initialMessage: string;
+  recoveryMode: boolean;
+  onRecoveryComplete: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const signInWithOAuth = async (provider: 'github' | 'google') => {
-    if (!supabase) return;
-    setBusy(true); setError('');
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: getSupabaseRedirectUrl() },
-    });
-    if (oauthError) { setError(oauthError.message); setBusy(false); }
+  const [error, setError] = useState(initialMessage);
+  const [status, setStatus] = useState('');
+  const [mode, setMode] = useState<AuthMode>(recoveryMode ? 'recovery' : 'signin');
+
+  useEffect(() => {
+    if (recoveryMode) setMode('recovery');
+  }, [recoveryMode]);
+
+  const runOAuth = async (provider: 'github' | 'google') => {
+    if (!supabase || busy) return;
+    setBusy(true);
+    setError('');
+    setStatus('Redirecting securely to ' + (provider === 'github' ? 'GitHub' : 'Google') + '…');
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: getSupabaseRedirectUrl() },
+      });
+      if (oauthError) {
+        setError(getFriendlyAuthError(oauthError));
+        setStatus('');
+        setBusy(false);
+      }
+    } catch (oauthError) {
+      setError(getFriendlyAuthError(oauthError));
+      setStatus('');
+      setBusy(false);
+    }
   };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!supabase) return;
-    setBusy(true); setError('');
-    const result = mode === 'signin'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: getSupabaseRedirectUrl() } });
-    if (result.error) setError(result.error.message);
-    else if (mode === 'signup' && !result.data.session) setError('Check your email to confirm your account, then sign in.');
-    setBusy(false);
+    if (!supabase || busy) return;
+    setBusy(true);
+    setError('');
+    setStatus('');
+    try {
+      if (mode === 'reset') {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: getSupabaseRedirectUrl(),
+        });
+        if (resetError) throw resetError;
+        setStatus('If an account exists for that email, a password reset link has been sent.');
+      } else if (mode === 'recovery') {
+        if (password.length < 8) throw new Error('Choose a password with at least 8 characters.');
+        if (password !== confirmPassword) throw new Error('The passwords do not match.');
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) throw updateError;
+        setPassword('');
+        setConfirmPassword('');
+        setStatus('Your password has been updated securely.');
+        onRecoveryComplete();
+      } else if (mode === 'signup') {
+        if (password.length < 8) throw new Error('Choose a password with at least 8 characters.');
+        const { data, error: signupError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { emailRedirectTo: getSupabaseRedirectUrl() },
+        });
+        if (signupError) throw signupError;
+        if (data.session) {
+          setStatus('Your account is ready. Opening your workspace…');
+        } else {
+          setStatus('Account created. Check your inbox for the confirmation link, then return here to sign in.');
+          setMode('signin');
+          setPassword('');
+        }
+      } else {
+        const { error: signinError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (signinError) throw signinError;
+      }
+    } catch (authError) {
+      const rawMessage = authError instanceof Error ? authError.message : '';
+      if (rawMessage === 'The passwords do not match.' || rawMessage.startsWith('Choose a password')) {
+        setError(rawMessage);
+      } else {
+        setError(getFriendlyAuthError(authError));
+      }
+    } finally {
+      setBusy(false);
+    }
   };
-  return <main className="auth-shell"><form className="auth-card" onSubmit={submit}>
-    <div className="auth-brand"><span className="mark"><Sparkles size={18}/></span><b>CodeForge</b><small>AI-NATIVE DEVELOPMENT</small></div>
-    <h1>{mode === 'signin' ? 'Welcome back.' : 'Create your workspace.'}</h1>
-    <p>Sign in securely to access your projects and saved files.</p>
-    <label>Email<input type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com"/></label>
-    <label>Password<input type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} minLength={8} required value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters"/></label>
-    {error && <div className="auth-error" role="alert">{error}</div>}
-    <button className="auth-submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button>
-    <div className="oauth-divider">OR CONTINUE WITH</div>
-    <div className="oauth-buttons"><button type="button" disabled={busy} onClick={() => signInWithOAuth('github')}>GitHub</button><button type="button" disabled={busy} onClick={() => signInWithOAuth('google')}>Google</button></div>
-    <button type="button" className="auth-switch" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}>{mode === 'signin' ? 'New to CodeForge? Create an account' : 'Already have an account? Sign in'}</button>
-  </form></main>;
+
+  const resendConfirmation = async () => {
+    if (!supabase || busy || !email.trim()) {
+      setError('Enter your email address first.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setStatus('');
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: getSupabaseRedirectUrl() },
+      });
+      if (resendError) throw resendError;
+      setStatus('If the account needs confirmation, a new email has been sent.');
+    } catch (authError) {
+      setError(getFriendlyAuthError(authError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const heading = mode === 'signup'
+    ? 'Create your account.'
+    : mode === 'reset'
+      ? 'Reset your password.'
+      : mode === 'recovery'
+        ? 'Choose a new password.'
+        : 'Welcome back.';
+  const description = mode === 'signup'
+    ? 'Create one secure account for your CodeForge projects.'
+    : mode === 'reset'
+      ? 'We’ll send a secure password reset link to your email.'
+      : mode === 'recovery'
+        ? 'Set a new password to finish recovering your CodeForge account.'
+        : 'Sign in securely to access your projects and saved files.';
+
+  return <main className="auth-shell">
+    <form className="auth-card" onSubmit={submit}>
+      <div className="auth-brand"><span className="mark"><Sparkles size={18}/></span><b>CodeForge</b><small>AI-NATIVE DEVELOPMENT</small></div>
+      <h1>{heading}</h1>
+      <p>{description}</p>
+      {mode !== 'recovery' && <label htmlFor="auth-email">Email
+        <input id="auth-email" type="email" autoComplete="email" required value={email}
+          onChange={event => setEmail(event.target.value)} placeholder="you@example.com" disabled={busy}/>
+      </label>}
+      {mode !== 'reset' && <label htmlFor="auth-password">{mode === 'recovery' ? 'New password' : 'Password'}
+        <input id="auth-password" type="password"
+          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+          minLength={8} required value={password} onChange={event => setPassword(event.target.value)}
+          placeholder="At least 8 characters" disabled={busy}/>
+      </label>}
+      {mode === 'recovery' && <label htmlFor="auth-confirm-password">Confirm new password
+        <input id="auth-confirm-password" type="password" autoComplete="new-password" minLength={8}
+          required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)}
+          placeholder="Enter the new password again" disabled={busy}/>
+      </label>}
+      {error && <div className="auth-error" role="alert" aria-live="assertive">{error}</div>}
+      {status && <div className="auth-status" role="status" aria-live="polite">{status}</div>}
+      <button className="auth-submit" type="submit" disabled={busy || !supabase}>
+        {busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : mode === 'recovery' ? 'Update password' : 'Sign in'}
+      </button>
+      {mode === 'signin' && <>
+        <div className="oauth-divider">OR CONTINUE WITH</div>
+        <div className="oauth-buttons">
+          <button type="button" disabled={busy} onClick={() => void runOAuth('github')}>GitHub</button>
+          <button type="button" disabled={busy} onClick={() => void runOAuth('google')}>Google</button>
+        </div>
+        <div className="auth-secondary-actions">
+          <button type="button" disabled={busy} onClick={() => { setMode('reset'); setError(''); setStatus(''); }}>Forgot password?</button>
+          <button type="button" disabled={busy} onClick={() => void resendConfirmation()}>Resend confirmation</button>
+        </div>
+      </>}
+      {mode !== 'recovery' && <button type="button" className="auth-switch" disabled={busy}
+        onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setError(''); setStatus(''); }}>
+        {mode === 'signup' ? 'Already have an account? Sign in' : mode === 'reset' ? 'Back to sign in' : 'New to CodeForge? Create an account'}
+      </button>}
+      {mode === 'recovery' && <button type="button" className="auth-switch" disabled={busy}
+        onClick={() => { setMode('signin'); setError(''); setStatus(''); }}>
+        Return to sign in
+      </button>}
+    </form>
+  </main>;
 }
 
-function App() {
+
+function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(authRedirectState.isPasswordRecovery);
+  const [authMessage, setAuthMessage] = useState(authRedirectState.message || '');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
@@ -150,10 +301,31 @@ function App() {
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
-  }, []);
+    let active = true;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!active) return;
+      setSession(nextSession);
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
+    });
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      setSession(data.session);
+      setAuthReady(true);
+      if (error) setAuthMessage(getFriendlyAuthError(error));
+      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+      if (authRedirectState.cleanUrl !== currentUrl) {
+        window.history.replaceState({}, '', authRedirectState.cleanUrl);
+      }
+    }).catch(() => {
+      if (!active) return;
+      setAuthReady(true);
+      setAuthMessage('Could not restore your sign-in session. Please sign in again.');
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [authRedirectState.cleanUrl]);
 
   const loadWorkspaces = useCallback(async () => {
     const items = await listWorkspaces();
@@ -544,12 +716,26 @@ function App() {
     } catch (error) { setCollaborationMessage(error instanceof Error ? error.message : 'Could not remove member.'); }
     finally { setBusy(false); }
   };
-  const signOut = async () => { await supabase?.auth.signOut(); };
+  const signOut = async () => {
+    try {
+      const result = await supabase?.auth.signOut();
+      if (result?.error) setNotice(getFriendlyAuthError(result.error));
+    } catch (error) {
+      setNotice(getFriendlyAuthError(error));
+    }
+  };
   const panelTitle = panel === 'explorer' ? 'EXPLORER' : panel === 'source' ? 'SOURCE CONTROL' : panel === 'agents' ? 'AGENTS' : panel === 'terminal' ? 'TERMINAL' : panel === 'settings' ? 'SETTINGS' : 'ACTIVITY';
 
   if (!authReady) return <main className="auth-shell"><div className="auth-card">Loading CodeForge…</div></main>;
-  if (!supabaseConfig.configured) return <main className="auth-shell"><div className="auth-card"><h1>Connect Supabase Auth</h1><p>Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in the Worker build environment, then rebuild.</p></div></main>;
-  if (!session) return <AuthScreen/>;
+  if (!supabaseConfig.configured) return <main className="auth-shell"><div className="auth-card"><h1>Connect Supabase Auth</h1><p>Supabase Auth is not connected to this deployment. Check the CodeForge Worker runtime configuration and public Supabase publishable key.</p></div></main>;
+  if (!session || recoveryMode) return <AuthScreen
+    initialMessage={authMessage}
+    recoveryMode={recoveryMode}
+    onRecoveryComplete={() => {
+      setRecoveryMode(false);
+      setAuthMessage('');
+    }}
+  />;
 
   return <main className="shell">
     <header className="topbar">
@@ -594,7 +780,10 @@ const hostedRedirect = getHostedAppRedirectUrl(window.location.href);
 if (hostedRedirect) {
   window.location.replace(hostedRedirect);
 } else {
+  const authRedirectState = readAuthRedirectState(window.location.href);
   const root = createRoot(document.getElementById('root')!);
-  root.render(<main className="auth-shell"><div className="auth-card">Loading CodeForge…</div></main>);
-  void initializeSupabase().finally(() => root.render(<App/>));
+  root.render(<main className="auth-shell"><div className="auth-card" role="status">Loading CodeForge securely…</div></main>);
+  void initializeSupabase()
+    .catch(() => undefined)
+    .finally(() => root.render(<App authRedirectState={authRedirectState}/>));
 }
