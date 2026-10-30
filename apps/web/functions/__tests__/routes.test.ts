@@ -45,3 +45,17 @@ describe('normalizeAgentType', () => {
     expect(normalizeAgentType(null)).toBe('coder');
   });
 });
+
+import { normalizeSupabaseUrl } from '../../src/lib/supabase-url';
+
+describe('normalizeSupabaseUrl', () => {
+  it('removes the REST endpoint suffix from a project URL', () => {
+    expect(normalizeSupabaseUrl('https://project.supabase.co/rest/v1/')).toBe('https://project.supabase.co');
+  });
+  it('preserves a clean project URL', () => {
+    expect(normalizeSupabaseUrl('https://project.supabase.co/')).toBe('https://project.supabase.co');
+  });
+  it('returns an empty string for missing configuration', () => {
+    expect(normalizeSupabaseUrl(undefined)).toBe('');
+  });
+});
