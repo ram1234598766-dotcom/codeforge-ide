@@ -82,6 +82,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   if(displayName.length>80) return reply({error:'Display name must be 80 characters or fewer'},400);
   if(avatarUrl && (!avatarUrl.startsWith('https://') || avatarUrl.length>500)) return reply({error:'Avatar URL must be HTTPS and 500 characters or fewer'},400);
   await env.CODEFORGE_DB.prepare('INSERT INTO profiles(user_id,display_name,avatar_url) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name,avatar_url=excluded.avatar_url,updated_at=CURRENT_TIMESTAMP').bind(userId,displayName || null,avatarUrl || null).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,action,metadata_json) VALUES(?,?,?,?)').bind(crypto.randomUUID(),userId,'profile.updated',JSON.stringify({hasAvatar:!!avatarUrl})).run();
   return reply({ok:true});
  }
  if (path === '/api/invites/accept' && request.method === 'POST') {
