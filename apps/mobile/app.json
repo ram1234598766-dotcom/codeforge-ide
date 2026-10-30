@@ -6,7 +6,6 @@
     "orientation": "default",
     "scheme": "codeforge",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.codeforge.ide",
       "supportsTablet": true
