@@ -634,25 +634,76 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
     setBusy(true); setNotice(''); setAgentOutput(''); setPrompt('');
     setActivity('Running ' + agentType + ' agent…');
     try {
-      const result = await apiRequest<{ runId: string; response: string; agentType: string; model: string; usage: unknown }>('/api/agents/run', {
+      const result = await apiRequest<{
+        runId: string;
+        response: string;
+        agentType: string;
+        model: string;
+        provider: string;
+        usage: unknown;
+        createdFiles?: string[];
+        proposedChanges?: CodeChangeRequest[];
+        skippedFileActions?: number;
+      }>('/api/agents/run', {
         method: 'POST',
         body: JSON.stringify({
           workspaceId,
           task: task.trim(),
           agentType,
           provider: selectedProvider,
-          context: { filePath: selectedPath, content },
+          context: {
+            filePath: selectedPath,
+            content,
+            files: files.slice(0, 10).map(file => ({
+              path: file.path,
+              content: file.path === selectedPath ? content : file.content.slice(0, 4000),
+            })),
+          },
         }),
       });
-      setAgentOutput(result.response);
+      const createdFiles = result.createdFiles || [];
+      const proposedChanges = result.proposedChanges || [];
+      const skippedActions = result.skippedFileActions || 0;
+      const outputSections = [result.response];
+      if (createdFiles.length) outputSections.push('FILES CREATED\n' + createdFiles.map(path => '• ' + path).join('\n'));
+      if (proposedChanges.length) outputSections.push('CHANGES AWAITING YOUR APPROVAL\n' + proposedChanges.map(change => '• ' + change.file_path).join('\n'));
+      setAgentOutput(outputSections.join('\n\n'));
+
+      if (workspaceId && (createdFiles.length || proposedChanges.length)) {
+        const savedFiles = await listWorkspaceFiles(workspaceId);
+        const mapped = savedFiles.map(file => ({ ...file, language: file.language || languageFor(file.path) }));
+        setFiles(mapped);
+        if (proposedChanges.length) {
+          setChangeRequests(previous => [
+            ...proposedChanges,
+            ...previous.filter(item => !proposedChanges.some(change => change.id === item.id)),
+          ]);
+          setPanel('agents');
+        } else if (createdFiles.length) {
+          const firstCreated = mapped.find(file => file.path === createdFiles[0]);
+          if (firstCreated && !dirty) {
+            setOpenPaths(previous => previous.includes(firstCreated.path) ? previous : [...previous, firstCreated.path]);
+            setSelectedPath(firstCreated.path);
+            setContent(firstCreated.content);
+            setSavedContent(firstCreated.content);
+          }
+          setPanel('explorer');
+        }
+      }
+
       const now = new Date().toISOString();
       setAgentRuns(previous => [{
         id: result.runId, workspace_id: workspaceId || null, task: task.trim(), agent_type: result.agentType,
-        status: 'succeeded', result_json: JSON.stringify({response:result.response,model:result.model,usage:result.usage}),
+        status: 'succeeded',
+        result_json: JSON.stringify({response:result.response,model:result.model,provider:result.provider,usage:result.usage,createdFiles,proposedChanges,skippedFileActions:skippedActions}),
         created_at: now, updated_at: now,
       }, ...previous].slice(0,30));
       setActivity('AI run completed · ' + result.agentType);
-      setNotice('AI response saved to run history. No files were changed.');
+      const outcome: string[] = [];
+      if (createdFiles.length) outcome.push(createdFiles.length + ' file' + (createdFiles.length === 1 ? '' : 's') + ' created in your workspace');
+      if (proposedChanges.length) outcome.push(proposedChanges.length + ' existing-file change' + (proposedChanges.length === 1 ? '' : 's') + ' awaiting approval');
+      if (skippedActions) outcome.push(skippedActions + ' file action' + (skippedActions === 1 ? '' : 's') + ' skipped because workspace write access is unavailable or the content was unchanged');
+      setNotice(outcome.length ? outcome.join(' · ') + '.' : 'AI response saved to run history. No files were changed.');
     } catch (error) {
       setActivity('AI run failed');
       setNotice(error instanceof Error ? error.message : 'AI request failed.');
@@ -777,7 +828,7 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
           <button type="submit" disabled={!consoleInput.trim()}>Run</button>
         </form>
       </div>}</div>
-      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
+      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> {selectedProvider === 'workers-ai' ? 'Cloudflare Workers AI · Llama 3.3 70B' : selectedProvider.toUpperCase() + ' · configured model'}</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
     {changeReviewOpen && selectedChange && <div className="modal-backdrop" onClick={() => setChangeReviewOpen(false)}><div className="history-modal change-review-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>APPROVE CODE CHANGE</b><small>{selectedChange.file_path} · review before applying</small></div><button onClick={() => setChangeReviewOpen(false)}><X size={16}/></button></div><div className="change-review-note">This proposal will modify your workspace file only after you approve it. The current version is preserved in file history.</div><div className="history-diff"><DiffEditor height="100%" theme="vs-dark" language={languageFor(selectedChange.file_path)} original={selectedChange.original_content} modified={selectedChange.proposed_content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/></div><div className="change-review-actions"><button className="reject-change" onClick={rejectSelectedChange} disabled={busy}>Reject</button><button className="approve-change" onClick={approveSelectedChange} disabled={busy}><Check size={14}/> {busy ? 'Applying…' : 'Approve & apply'}</button></div></div></div>}
     {historyOpen && <div className="modal-backdrop" onClick={() => setHistoryOpen(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>FILE VERSION HISTORY</b><small>{selectedPath}</small></div><button onClick={() => setHistoryOpen(false)}><X size={16}/></button></div><div className="history-modal-body"><aside className="version-list">{historyLoading ? <small>Loading versions…</small> : historyVersions.length ? historyVersions.map(version => <button className={selectedVersion === version.id ? 'version-item selected' : 'version-item'} key={version.id} onClick={() => { setSelectedVersion(version.id); setVersionContent(version.content); }}><b>{new Date(version.created_at).toLocaleString()}</b><small>{version.content.length.toLocaleString()} characters</small></button>) : <div className="panel-empty"><History size={18}/><strong>No saved versions</strong><span>Save the file after editing to create a history snapshot.</span></div>}</aside><div className="history-diff">{selectedVersion ? <DiffEditor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} original={versionContent} modified={content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/> : <div className="panel-empty">Select a version to compare.</div>}</div></div><div className="history-modal-foot"><span>Left: selected version · Right: current editor buffer</span><button className="run" onClick={restoreVersion} disabled={!selectedVersion || busy || !canEditWorkspace}>Restore selected version</button></div></div></div>}{searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}>
