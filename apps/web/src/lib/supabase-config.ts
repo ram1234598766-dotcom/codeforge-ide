@@ -42,7 +42,7 @@ export function resolveSupabaseConfig(
  * callbacks to its canonical production origin, regardless of the page origin
  * or any query/hash values in the current browser URL.
  */
-export const CODEFORGE_PRODUCTION_URL = 'https://codeforge-ide.vasudevaya.workers.dev';
+export const CODEFORGE_PRODUCTION_URL = 'https://codeforge-ide.vasudevaya.workers.dev/';
 
 export function getSupabaseRedirectUrl(): string {
   return CODEFORGE_PRODUCTION_URL;
