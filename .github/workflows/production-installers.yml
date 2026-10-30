@@ -13,13 +13,12 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: codeforge-production-installers-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   windows:
     name: Build Windows desktop installer
+    concurrency:
+      group: codeforge-windows-build-${{ github.sha }}
+      cancel-in-progress: false
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -75,6 +74,9 @@ jobs:
 
   android:
     name: Build signed Android APK
+    concurrency:
+      group: codeforge-android-build-${{ github.sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -146,6 +148,9 @@ jobs:
 
   publish:
     name: Publish versioned downloads
+    concurrency:
+      group: codeforge-latest-release-publish
+      cancel-in-progress: false
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     needs: [windows, android]
     runs-on: ubuntu-latest
