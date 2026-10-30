@@ -47,7 +47,13 @@ Set these build-time variables in the Worker build environment:
 
 The Supabase publishable key is intended for public clients. Never use a Supabase service-role key in the browser or commit private credentials.
 
-For GitHub-driven Worker deployment, configure a narrowly scoped Cloudflare API token as the GitHub Actions secret `CLOUDFLARE_API_TOKEN` and set `CLOUDFLARE_ACCOUNT_ID`. Do not reuse any token previously pasted into chat; revoke it and create a replacement first.
+The `.github/workflows/deploy-worker.yml` workflow deploys on pushes to `main` after configuration is present. Configure these repository settings:
+
+- Repository variable `VITE_SUPABASE_URL`
+- Repository secrets `VITE_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_PUBLISHABLE_KEY` (same current Supabase publishable key)
+- Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
+
+The Cloudflare token should be narrowly scoped to the CodeForge account with Workers Scripts Edit, D1 Edit, and Workers KV Storage Edit. Do not reuse any token previously pasted into chat; revoke it and create a replacement first.
 
 ## Implemented in this foundation branch
 
