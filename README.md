@@ -60,7 +60,7 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 
 - Supabase email/password sign-in and account creation
 - Authenticated Worker APIs with per-user ownership checks
-- D1 workspaces, workspace files, workspace state, agent runs, and audit events
+- D1 workspaces, workspace files, workspace state, agent runs, audit events, and encrypted per-user provider credentials
 - KV caching for workspace state and a basic per-user AI request limit
 - Monaco editor with multi-file tabs, D1 saving, keyboard shortcuts, and workspace-state restoration
 - Workspace creation, rename, deletion, file creation, deletion, and file-path search
@@ -68,6 +68,8 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - Sandboxed browser HTML preview
 - Ctrl/Cmd+S save and Ctrl/Cmd+P file search shortcuts
 - Cloudflare Workers AI coding agents: coder, planner, reviewer, debugger, tester, refactorer, security, and documentation
+- Bring-your-own model keys for OpenAI, DeepSeek, Groq, and OpenRouter, encrypted with AES-GCM in D1 and decrypted only in the Worker
+- GitHub and Google OAuth sign-in buttons via Supabase Auth (providers must be enabled in the Supabase dashboard)
 - Persisted AI run history and an activity timeline
 - Sandboxed browser HTML preview (not a server-side runtime)
 - CI for unit tests, TypeScript checking, Vite build, and Wrangler dry-run
@@ -96,3 +98,11 @@ Merges to `main` run the CodeForge Worker deployment workflow after the reposito
 ### OAuth providers
 
 Email/password authentication works with the configured Supabase project. GitHub and Google buttons use Supabase OAuth; enable each provider under Supabase Dashboard → Authentication → Providers and add `https://codeforge-ide.vasudevaya.workers.dev` to the project's allowed redirect URLs. The buttons will return a provider-configuration error until the corresponding OAuth client credentials and redirect settings are enabled.
+
+### Provider key encryption
+
+The Worker secret `APP_ENCRYPTION_KEY` is a randomly generated 256-bit AES-GCM key. Do not delete or rotate it while provider credentials are stored in D1; rotation requires decrypting and re-encrypting every stored provider key. Provider API keys are never returned to the browser.
+
+### OAuth setup
+
+GitHub and Google OAuth buttons require those providers to be enabled under Supabase Dashboard → Authentication → Providers, with the CodeForge Worker origin added to the allowed redirect URLs. Email/password sign-in does not depend on OAuth provider configuration.
