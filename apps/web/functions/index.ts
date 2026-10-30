@@ -303,16 +303,16 @@ async function api(request: Request, env: Env): Promise<Response> {
   if (cached !== null) {
    try { return reply({results:JSON.parse(cached),cached:true}); } catch { /* Ignore malformed cache entries. */ }
   }
-  const rowType = {} as {path:string;excerpt:string;start_line:number;content_matched:number;path_matched:number};
-  let rows = [] as typeof rowType[];
+  type SearchRow = {path:string;excerpt:string;start_line:number;content_matched:number;path_matched:number};
+  let rows:SearchRow[] = [];
   if (mode === 'path') {
-   const result = await env.CODEFORGE_DB.prepare("SELECT path,'' AS excerpt,0 AS start_line,0 AS content_matched,1 AS path_matched FROM workspace_files WHERE workspace_id=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 50").bind(id,normalized).all<typeof rowType>();
+   const result = await env.CODEFORGE_DB.prepare("SELECT path,'' AS excerpt,0 AS start_line,0 AS content_matched,1 AS path_matched FROM workspace_files WHERE workspace_id=? AND instr(lower(path),lower(?))>0 ORDER BY path LIMIT 50").bind(id,normalized).all<SearchRow>();
    rows = result.results || [];
   } else if (mode === 'content') {
-   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos FROM workspace_files WHERE workspace_id=?) SELECT path,substr(content,max(1,pos-240),640) AS excerpt,length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 AS start_line,1 AS content_matched,0 AS path_matched FROM candidates WHERE pos>0 ORDER BY path LIMIT 50").bind(normalized,id).all<typeof rowType>();
+   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos FROM workspace_files WHERE workspace_id=?) SELECT path,substr(content,max(1,pos-240),640) AS excerpt,length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 AS start_line,1 AS content_matched,0 AS path_matched FROM candidates WHERE pos>0 ORDER BY path LIMIT 50").bind(normalized,id).all<SearchRow>();
    rows = result.results || [];
   } else {
-   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos,instr(lower(path),lower(?)) AS path_pos FROM workspace_files WHERE workspace_id=?) SELECT path,CASE WHEN pos>0 THEN substr(content,max(1,pos-240),640) ELSE '' END AS excerpt,CASE WHEN pos>0 THEN length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 ELSE 0 END AS start_line,(pos>0) AS content_matched,(path_pos>0) AS path_matched FROM candidates WHERE pos>0 OR path_pos>0 ORDER BY path LIMIT 50").bind(normalized,normalized,id).all<typeof rowType>();
+   const result = await env.CODEFORGE_DB.prepare("WITH candidates AS (SELECT path,content,instr(lower(content),lower(?)) AS pos,instr(lower(path),lower(?)) AS path_pos FROM workspace_files WHERE workspace_id=?) SELECT path,CASE WHEN pos>0 THEN substr(content,max(1,pos-240),640) ELSE '' END AS excerpt,CASE WHEN pos>0 THEN length(substr(content,1,max(1,pos-240)-1))-length(replace(substr(content,1,max(1,pos-240)-1),char(10),''))+1 ELSE 0 END AS start_line,(pos>0) AS content_matched,(path_pos>0) AS path_matched FROM candidates WHERE pos>0 OR path_pos>0 ORDER BY path LIMIT 50").bind(normalized,normalized,id).all<SearchRow>();
    rows = result.results || [];
   }
   const matches = rows.map(file => {
@@ -321,8 +321,8 @@ async function api(request: Request, env: Env): Promise<Response> {
     const excerpt = file.excerpt || '';
     const offset = excerpt.toLocaleLowerCase().indexOf(normalized.toLocaleLowerCase());
     const before = excerpt.slice(0,Math.max(0,offset));
-    const excerptLines = excerpt.split('\\n');
-    const localLine = Math.max(0,before.split('\\n').length-1);
+    const excerptLines = excerpt.split('\n');
+    const localLine = Math.max(0,before.split('\n').length-1);
     hits.push({line:(file.start_line || 1)+localLine,text:(excerptLines[localLine] || excerpt).trim().slice(0,320)});
    }
    if (mode === 'path' || (file.path_matched && hits.length === 0)) hits.push({line:0,text:file.path});
