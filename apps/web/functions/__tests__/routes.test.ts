@@ -88,3 +88,30 @@ describe('parseWorkspaceRoute version history', () => {
     expect(parseWorkspaceRoute(`/api/workspaces/${id}/versions`)).toEqual({ workspaceId: id, resource: 'versions' });
   });
 });
+
+describe('parseWorkspaceRoute collaboration routes', () => {
+  it('matches member and invitation endpoints', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/members`)).toEqual({ workspaceId: id, resource: 'members' });
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/invites`)).toEqual({ workspaceId: id, resource: 'invites' });
+  });
+});
+
+import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole } from '../routes';
+
+describe('workspace role permissions', () => {
+  it('allows editors and above to change files', () => {
+    expect(canEditWorkspaceRole('owner')).toBe(true);
+    expect(canEditWorkspaceRole('admin')).toBe(true);
+    expect(canEditWorkspaceRole('editor')).toBe(true);
+    expect(canEditWorkspaceRole('viewer')).toBe(false);
+  });
+  it('limits workspace administration to owners and admins', () => {
+    expect(canAdminWorkspaceRole('owner')).toBe(true);
+    expect(canAdminWorkspaceRole('admin')).toBe(true);
+    expect(canAdminWorkspaceRole('editor')).toBe(false);
+  });
+  it('reserves workspace deletion for owners', () => {
+    expect(canDeleteWorkspaceRole('owner')).toBe(true);
+    expect(canDeleteWorkspaceRole('admin')).toBe(false);
+  });
+});

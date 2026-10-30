@@ -1,10 +1,10 @@
-export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' } | null;
+export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' } | null;
 
 export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   const path = pathname.replace(/\/$/, '');
-  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions))?$/i);
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites))?$/i);
   if (!match) return null;
-  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | undefined };
+  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | undefined };
 }
 
 export const AGENT_TYPES = ['planner', 'coder', 'reviewer', 'debugger', 'tester', 'refactorer', 'security', 'documentation'] as const;
@@ -38,4 +38,14 @@ export function validateWorkspaceFilePath(path: unknown): string | null {
     return 'Invalid file path.';
   }
   return null;
+}
+
+export function canEditWorkspaceRole(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'editor';
+}
+export function canAdminWorkspaceRole(role: string | null): boolean {
+  return role === 'owner' || role === 'admin';
+}
+export function canDeleteWorkspaceRole(role: string | null): boolean {
+  return role === 'owner';
 }
