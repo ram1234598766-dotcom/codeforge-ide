@@ -25,6 +25,10 @@ async function api(request: Request, env: Env): Promise<Response> {
  const userId = await authenticate(request, env);
  if (!userId) return reply({error:'Authentication required'},401);
 
+ if (path === '/api/activity' && request.method === 'GET') {
+  const result = await env.CODEFORGE_DB.prepare('SELECT id,workspace_id,action,metadata_json,created_at FROM audit_events WHERE user_id=? ORDER BY created_at DESC LIMIT 50').bind(userId).all();
+  return reply({events:result.results || []});
+ }
  if (path === '/api/agents/runs' && request.method === 'GET') {
   const result = await env.CODEFORGE_DB.prepare('SELECT id,workspace_id,task,agent_type,status,result_json,created_at,updated_at FROM agent_runs WHERE user_id=? ORDER BY created_at DESC LIMIT 30').bind(userId).all();
   return reply({runs:result.results || []});
