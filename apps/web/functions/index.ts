@@ -396,12 +396,16 @@ async function api(request: Request, env: Env): Promise<Response> {
   const version=await env.CODEFORGE_DB.prepare('SELECT path,content,language FROM workspace_file_versions WHERE id=? AND workspace_id=?').bind(versionId,id).first<{path:string;content:string;language:string|null}>();
   if(!version) return reply({error:'File version not found'},404);
   const current=await env.CODEFORGE_DB.prepare('SELECT content,language FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,version.path).first<{content:string;language:string|null}>();
+  const restoreStatements = [];
   if(current && current.content!==version.content) {
-   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,version.path,current.content,current.language).run();
+   restoreStatements.push(env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,version.path,current.content,current.language));
   }
-  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,version.path,version.content,version.language).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.version.restored',JSON.stringify({path:version.path,versionId})).run();
+  restoreStatements.push(
+   env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,version.path,version.content,version.language),
+   env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id),
+   env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.version.restored',JSON.stringify({path:version.path,versionId}))
+  );
+  await env.CODEFORGE_DB.batch(restoreStatements);
   return reply({ok:true,path:version.path,content:version.content,language:version.language});
  }
  if (resource === 'state' && request.method === 'GET') {
@@ -431,9 +435,11 @@ async function api(request: Request, env: Env): Promise<Response> {
   const filePath=body.path.trim().replace(/^\/+/, '');
   const existing=await env.CODEFORGE_DB.prepare('SELECT id FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath).first();
   if(!existing) return reply({error:'File not found'},404);
-  await env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.deleted',JSON.stringify({path:filePath})).run();
+  await env.CODEFORGE_DB.batch([
+   env.CODEFORGE_DB.prepare('DELETE FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath),
+   env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id),
+   env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.deleted',JSON.stringify({path:filePath}))
+  ]);
   return reply({ok:true,path:filePath});
  }
  if (resource === 'files' && request.method === 'PUT') {
@@ -445,14 +451,18 @@ async function api(request: Request, env: Env): Promise<Response> {
   if(content.length>1000000) return reply({error:'File too large'},413);
   const language=typeof body.language==='string'?body.language.slice(0,40):null;
   const previous=await env.CODEFORGE_DB.prepare('SELECT content,language FROM workspace_files WHERE workspace_id=? AND path=?').bind(id,filePath).first<{content:string;language:string|null}>();
+  const saveStatements = [];
   if(!previous || previous.content!==content) {
    const snapshot=previous ? previous.content : content;
    const snapshotLanguage=previous ? previous.language : language;
-   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,filePath,snapshot,snapshotLanguage).run();
+   saveStatements.push(env.CODEFORGE_DB.prepare('INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,userId,filePath,snapshot,snapshotLanguage));
   }
-  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,filePath,content,language).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id).run();
-  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.saved',JSON.stringify({path:filePath,bytes:content.length})).run();
+  saveStatements.push(
+   env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO UPDATE SET user_id=excluded.user_id,content=excluded.content,language=excluded.language,updated_at=CURRENT_TIMESTAMP').bind(crypto.randomUUID(),id,userId,filePath,content,language),
+   env.CODEFORGE_DB.prepare('INSERT INTO workspace_revisions(workspace_id,revision) VALUES(?,1) ON CONFLICT(workspace_id) DO UPDATE SET revision=revision+1,updated_at=CURRENT_TIMESTAMP').bind(id),
+   env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'file.saved',JSON.stringify({path:filePath,bytes:content.length}))
+  );
+  await env.CODEFORGE_DB.batch(saveStatements);
   return reply({ok:true,path:filePath});
  }
  return reply({error:'Method not allowed'},405);
