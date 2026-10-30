@@ -9,7 +9,7 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $function$
   SELECT
     EXISTS (
@@ -28,6 +28,20 @@ $function$;
 
 REVOKE ALL ON FUNCTION private.is_workspace_member(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION private.is_workspace_member(uuid) TO authenticated;
+
+-- Trigger-only profile creation runs with a minimal SECURITY DEFINER search path.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  INSERT INTO public.profiles (id, display_name)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'name', NEW.email));
+  RETURN NEW;
+END;
+$function$;
 
 -- Functions used only by database triggers must not be callable through PostgREST RPC.
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated, service_role;
@@ -200,10 +214,35 @@ WITH CHECK (
 
 CREATE POLICY "users update own runs"
 ON public.agent_runs FOR UPDATE TO authenticated
-USING (user_id = (SELECT auth.uid()))
+USING (
+  user_id = (SELECT auth.uid())
+  AND (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = agent_runs.workspace_id
+        AND wm.user_id = (SELECT auth.uid())
+        AND wm.role IN ('owner', 'admin', 'member')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.workspaces w
+      WHERE w.id = workspace_id AND w.owner_id = (SELECT auth.uid())
+    )
+  )
+)
 WITH CHECK (
   user_id = (SELECT auth.uid())
-  AND private.is_workspace_member(workspace_id)
+  AND (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = agent_runs.workspace_id
+        AND wm.user_id = (SELECT auth.uid())
+        AND wm.role IN ('owner', 'admin', 'member')
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.workspaces w
+      WHERE w.id = workspace_id AND w.owner_id = (SELECT auth.uid())
+    )
+  )
 );
 
 CREATE POLICY "members read audit"

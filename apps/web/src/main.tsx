@@ -197,7 +197,7 @@ function AuthScreen({
         : 'Sign in securely to access your projects and saved files.';
 
   return <main className="auth-shell">
-    <form className="auth-card" onSubmit={submit} noValidate>
+    <form className="auth-card" onSubmit={submit}>
       <div className="auth-brand"><span className="mark"><Sparkles size={18}/></span><b>CodeForge</b><small>AI-NATIVE DEVELOPMENT</small></div>
       <h1>{heading}</h1>
       <p>{description}</p>

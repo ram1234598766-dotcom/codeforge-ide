@@ -38,3 +38,20 @@ describe('getFriendlyAuthError', () => {
     expect(getFriendlyAuthError(new Error('internal upstream diagnostic'))).toBe('Authentication could not be completed. Please try again or choose another sign-in method.');
   });
 });
+
+describe('readAuthRedirectState hash callbacks', () => {
+  it('detects a password recovery type in the token hash and removes it after capture', () => {
+    const state = readAuthRedirectState(
+      'https://codeforge-ide.vasudevaya.workers.dev/#access_token=secret&refresh_token=secret&type=recovery',
+    );
+    expect(state.isPasswordRecovery).toBe(true);
+    expect(state.cleanUrl).toBe('/');
+  });
+
+  it('removes OAuth state query values while retaining normal workspace parameters', () => {
+    const state = readAuthRedirectState(
+      'https://codeforge-ide.vasudevaya.workers.dev/?code=once&state=one-time-state&invite=valid-invite',
+    );
+    expect(state.cleanUrl).toBe('/?invite=valid-invite');
+  });
+});
