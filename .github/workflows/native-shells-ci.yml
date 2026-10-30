@@ -21,9 +21,8 @@ jobs:
       - name: Install Expo dependencies
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=true
-      - name: Generate project-local lockfile for Expo diagnostics
-        working-directory: apps/mobile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --package-lock=true
+      - name: Generate pnpm workspace lockfile for Expo diagnostics
+        run: npx --yes pnpm@9.15.0 install --lockfile-only --ignore-scripts --no-frozen-lockfile
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
