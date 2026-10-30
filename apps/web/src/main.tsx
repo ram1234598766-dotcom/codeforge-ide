@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, LogOut, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, X, Zap } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
-import { supabase, supabaseConfig } from './lib/supabase';
+import { apiRequest, supabase, supabaseConfig } from './lib/supabase';
 import {
   createWorkspace, listWorkspaces, listWorkspaceFiles, saveWorkspaceFile,
   type Workspace,
@@ -72,6 +72,8 @@ function App() {
   const [savedContent, setSavedContent] = useState(starterCode);
   const [connection, setConnection] = useState<'checking' | 'connected' | 'offline'>('checking');
   const [prompt, setPrompt] = useState('');
+  const [agentType, setAgentType] = useState('coder');
+  const [agentOutput, setAgentOutput] = useState('');
   const [activity, setActivity] = useState('Ready to build');
   const [panel, setPanel] = useState<Panel>('explorer');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -161,9 +163,29 @@ function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load workspace.'); }
     finally { setBusy(false); }
   };
-  const runAgent = (task = prompt) => {
-    if (!task.trim()) return;
-    setActivity('AI task queued: ' + task.trim()); setNotice('AI provider is not connected yet. No simulated execution was run.'); setPrompt('');
+  const runAgent = async (task = prompt) => {
+    if (!task.trim() || busy) return;
+    setBusy(true); setNotice(''); setAgentOutput(''); setPrompt('');
+    setActivity('Running ' + agentType + ' agent…');
+    try {
+      const result = await apiRequest<{ runId: string; response: string; agentType: string; model: string; usage: unknown }>('/api/agents/run', {
+        method: 'POST',
+        body: JSON.stringify({
+          workspaceId,
+          task: task.trim(),
+          agentType,
+          context: { filePath: selectedPath, content },
+        }),
+      });
+      setAgentOutput(result.response);
+      setActivity('AI run completed · ' + result.agentType);
+      setNotice('AI response saved to run history. No files were changed.');
+    } catch (error) {
+      setActivity('AI run failed');
+      setNotice(error instanceof Error ? error.message : 'AI request failed.');
+    } finally {
+      setBusy(false);
+    }
   };
   const signOut = async () => { await supabase?.auth.signOut(); };
   const panelTitle = panel === 'explorer' ? 'EXPLORER' : panel === 'source' ? 'SOURCE CONTROL' : panel === 'agents' ? 'AGENTS' : panel === 'terminal' ? 'TERMINAL' : 'ACTIVITY';
@@ -182,7 +204,7 @@ function App() {
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
       <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <button className={'file ' + (selectedPath === file.path ? 'active' : '')} key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); }}><span className="file-dot"/> {file.path}</button>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
       <div className="editor"><div className="tabs"><button className="tab active">{selectedPath || 'No file selected'} {dirty ? '•' : <Check size={12}/>}</button></div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div><div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
-      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div></div><div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> AI provider connection pending</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
+      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
     {searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus placeholder="Search files…"/><small>Search across repository files will be enabled with repository indexing.</small></div></div>}
   </main>;

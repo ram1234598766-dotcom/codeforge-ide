@@ -19,3 +19,29 @@ describe('parseWorkspaceRoute', () => {
     expect(parseWorkspaceRoute('/api/users')).toBeNull();
   });
 });
+
+import { normalizeAgentType, validateAgentTask } from '../routes';
+
+describe('validateAgentTask', () => {
+  it('rejects empty and non-string tasks', () => {
+    expect(validateAgentTask('   ')).toBe('Task is required.');
+    expect(validateAgentTask(null)).toBe('Task must be text.');
+  });
+  it('enforces a bounded prompt size', () => {
+    expect(validateAgentTask('x'.repeat(12001))).toBe('Task must be 12,000 characters or fewer.');
+  });
+  it('accepts a normal coding request', () => {
+    expect(validateAgentTask('Review this TypeScript file')).toBeNull();
+  });
+});
+
+describe('normalizeAgentType', () => {
+  it('accepts supported specialist roles', () => {
+    expect(normalizeAgentType('reviewer')).toBe('reviewer');
+    expect(normalizeAgentType('security')).toBe('security');
+  });
+  it('falls back to the coder role for unknown input', () => {
+    expect(normalizeAgentType('root')).toBe('coder');
+    expect(normalizeAgentType(null)).toBe('coder');
+  });
+});

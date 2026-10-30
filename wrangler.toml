@@ -22,3 +22,6 @@ migrations_dir = "migrations"
 [[kv_namespaces]]
 binding = "CODEFORGE_KV"
 id = "581b9fe8b58e4d798a1416514230d9df"
+
+[ai]
+binding = "AI"
