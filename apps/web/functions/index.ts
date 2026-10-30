@@ -92,7 +92,7 @@ async function api(request: Request, env: Env): Promise<Response> {
    const validation = validateCodeChange(body?.path,body?.proposedContent);
    if (validation) return reply({error:validation},400);
    const filePath = body.path.trim().replace(/^\/+/, '');
-   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,filePath).first<{content:string}>();
+   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND path=?').bind(workspaceId,filePath).first<{content:string}>();
    if (!current) return reply({error:'File not found in this workspace.'},404);
    if (current.content === body.proposedContent) return reply({error:'The proposed content is identical to the current file.'},400);
    const id = crypto.randomUUID();
@@ -110,14 +110,15 @@ async function api(request: Request, env: Env): Promise<Response> {
   if (changeId && action === 'approve' && request.method === 'POST') {
    const change = await env.CODEFORGE_DB.prepare("SELECT id,file_path,original_content,original_hash,proposed_content,status FROM code_change_requests WHERE id=? AND workspace_id=?").bind(changeId,workspaceId).first<{id:string;file_path:string;original_content:string;original_hash:string;proposed_content:string;status:string}>();
    if (!change || change.status !== 'pending') return reply({error:'Pending change request not found.'},404);
-   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,change.file_path).first<{content:string}>();
+   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND path=?').bind(workspaceId,change.file_path).first<{content:string}>();
    if (!current || await sha256Hex(current.content) !== change.original_hash) {
     return reply({error:'The file changed after this proposal was created. Refresh the file and create a new proposal.'},409);
    }
+   const versionId = crypto.randomUUID();
    await env.CODEFORGE_DB.batch([
-    env.CODEFORGE_DB.prepare("INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) SELECT ?,f.workspace_id,f.user_id,f.path,f.content,f.language FROM workspace_files f WHERE f.workspace_id=? AND f.user_id=? AND f.path=? AND f.content=?").bind(crypto.randomUUID(),workspaceId,userId,change.file_path,change.original_content),
-    env.CODEFORGE_DB.prepare("UPDATE workspace_files SET content=?,updated_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND user_id=? AND path=? AND content=?").bind(change.proposed_content,workspaceId,userId,change.file_path,change.original_content),
-    env.CODEFORGE_DB.prepare("UPDATE code_change_requests SET status='approved',updated_at=CURRENT_TIMESTAMP,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND status='pending' AND EXISTS(SELECT 1 FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=? AND content=?)").bind(changeId,workspaceId,workspaceId,userId,change.file_path,change.proposed_content),
+    env.CODEFORGE_DB.prepare("INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) SELECT ?,f.workspace_id,f.user_id,f.path,f.content,f.language FROM workspace_files f WHERE f.workspace_id=? AND f.path=? AND f.content=?").bind(versionId,workspaceId,change.file_path,change.original_content),
+    env.CODEFORGE_DB.prepare("UPDATE workspace_files SET content=?,updated_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND path=? AND content=?").bind(change.proposed_content,workspaceId,change.file_path,change.original_content),
+    env.CODEFORGE_DB.prepare("UPDATE code_change_requests SET status='approved',updated_at=CURRENT_TIMESTAMP,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND status='pending' AND EXISTS(SELECT 1 FROM workspace_file_versions WHERE id=?) AND EXISTS(SELECT 1 FROM workspace_files WHERE workspace_id=? AND path=? AND content=?)").bind(changeId,workspaceId,versionId,workspaceId,change.file_path,change.proposed_content),
     env.CODEFORGE_DB.prepare("INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) SELECT ?,?,?,'code_change.approved',? WHERE EXISTS(SELECT 1 FROM code_change_requests WHERE id=? AND workspace_id=? AND status='approved')").bind(crypto.randomUUID(),userId,workspaceId,JSON.stringify({changeId,path:change.file_path}),changeId,workspaceId)
    ]);
    const final = await env.CODEFORGE_DB.prepare('SELECT status FROM code_change_requests WHERE id=? AND workspace_id=?').bind(changeId,workspaceId).first<{status:string}>();
