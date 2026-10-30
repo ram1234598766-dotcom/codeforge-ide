@@ -81,7 +81,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const role = await workspaceRole(env,userId,workspaceId);
   if (!role) return reply({error:'Workspace not found'},404);
   if (!changeId && request.method === 'GET') {
-   const result = await env.CODEFORGE_DB.prepare('SELECT id,file_path,original_content,proposed_content,status,created_at,updated_at FROM code_change_requests WHERE workspace_id=? AND status='pending' ORDER BY created_at DESC LIMIT 10').bind(workspaceId).all();
+   const result = await env.CODEFORGE_DB.prepare("SELECT id,file_path,original_content,proposed_content,status,created_at,updated_at FROM code_change_requests WHERE workspace_id=? AND status='pending' ORDER BY created_at DESC LIMIT 10").bind(workspaceId).all();
    return reply({changes:result.results || []});
   }
   if (!canEditWorkspaceRole(role)) return reply({error:'Workspace editor role required'},403);
