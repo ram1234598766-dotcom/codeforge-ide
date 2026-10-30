@@ -53,12 +53,28 @@ function isProviderId(value: unknown): value is ProviderId {
 
 type AuthUser = { id: string; email: string | null; emailVerified: boolean };
 async function authenticate(request: Request, env: Env): Promise<AuthUser | null> {
- const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
- if (!token || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
- const res = await fetch(env.SUPABASE_URL + '/auth/v1/user', { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization: 'Bearer ' + token } });
- if (!res.ok) return null;
- const user = await res.json() as { id?: string; email?: string; email_confirmed_at?: string | null };
- return user.id ? { id:user.id, email:user.email || null, emailVerified:!!user.email_confirmed_at } : null;
+ const authorization = request.headers.get('authorization') || '';
+ const match = authorization.match(/^Bearer\s+(\S+)$/i);
+ const token = match?.[1] || '';
+ if (!token || token.length > 8192 || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
+ try {
+  const res = await fetch(env.SUPABASE_URL + '/auth/v1/user', {
+   method: 'GET',
+   headers: {
+    apikey: env.SUPABASE_PUBLISHABLE_KEY,
+    authorization: 'Bearer ' + token,
+    accept: 'application/json'
+   },
+   cache: 'no-store',
+   signal: AbortSignal.timeout(8000)
+  });
+  if (!res.ok) return null;
+  const user = await res.json() as { id?: string; email?: string; email_confirmed_at?: string | null };
+  if (typeof user.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) return null;
+  return { id: user.id, email: typeof user.email === 'string' ? user.email : null, emailVerified: !!user.email_confirmed_at };
+ } catch {
+  return null;
+ }
 }
 async function workspaceRole(env: Env, userId: string, workspaceId: string): Promise<string | null> {
  const member = await env.CODEFORGE_DB.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').bind(workspaceId,userId).first<{role:string}>();
