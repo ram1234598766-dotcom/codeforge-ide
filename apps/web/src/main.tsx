@@ -128,6 +128,7 @@ function App() {
     finally { setBusy(false); }
   };
   const addFile = async () => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
     const path = window.prompt('New file path', 'src/new-file.ts');
     if (!path || !workspaceId) return;
     if (files.some(file => file.path === path)) { setNotice('A file with that path already exists.'); return; }
@@ -141,6 +142,7 @@ function App() {
     finally { setBusy(false); }
   };
   const createNewWorkspace = async () => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
     const name = window.prompt('Workspace name');
     if (!name?.trim()) return;
     setBusy(true);
