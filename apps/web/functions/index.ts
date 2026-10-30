@@ -256,7 +256,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
-  const filePath=body.path.trim().replace(/^\\/+/, ''), content=typeof body?.content==='string'?body.content:'';
+  const filePath=body.path.trim().replace(/^\/+/, ''), content=typeof body?.content==='string'?body.content:'';
   if(content.length>1000000) return reply({error:'File too large'},413);
   const language=typeof body.language==='string'?body.language.slice(0,40):null;
   const previous=await env.CODEFORGE_DB.prepare('SELECT content,language FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(id,userId,filePath).first<{content:string;language:string|null}>();
