@@ -28,6 +28,7 @@ The D1 database currently has tables for workspaces, workspace state, workspace 
 npm --prefix apps/web install
 cp apps/web/.env.example apps/web/.env.local
 npm --prefix apps/web run dev
+npm --prefix apps/web test
 npm --prefix apps/web run typecheck
 npm --prefix apps/web run build
 npx wrangler deploy --dry-run
@@ -61,8 +62,10 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 - Authenticated Worker APIs with per-user ownership checks
 - D1 workspaces, workspace files, workspace state, agent runs, and audit events
 - KV caching for workspace state and a basic per-user AI request limit
-- Monaco editor with multi-file tabs, D1 saving, and workspace-state restoration
-- Workspace creation, rename, deletion, file creation, deletion, and path search
+- Monaco editor with multi-file tabs, D1 saving, keyboard shortcuts, and workspace-state restoration
+- Workspace creation, rename, deletion, file creation, deletion, and file-path search
+- Persisted AI run history and a D1-backed activity timeline
+- Sandboxed browser HTML preview
 - Ctrl/Cmd+S save and Ctrl/Cmd+P file search shortcuts
 - Cloudflare Workers AI coding agents: coder, planner, reviewer, debugger, tester, refactorer, security, and documentation
 - Persisted AI run history and an activity timeline
