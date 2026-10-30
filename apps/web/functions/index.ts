@@ -37,6 +37,18 @@ async function api(request: Request, env: Env): Promise<Response> {
  const [,id,resource] = m;
  const own = await env.CODEFORGE_DB.prepare('SELECT id FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first();
  if (!own) return reply({error:'Workspace not found'},404);
+ if (!resource && request.method === 'PATCH') {
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const name=typeof body?.name==='string'?body.name.trim():'';
+  if(!name || name.length>100) return reply({error:'Name must be 1–100 characters'},400);
+  await env.CODEFORGE_DB.prepare("UPDATE workspaces SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?").bind(name,id,userId).run();
+  return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()});
+ }
+ if (!resource && request.method === 'DELETE') {
+  await env.CODEFORGE_DB.prepare('DELETE FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).run();
+  await env.CODEFORGE_KV.delete('workspace-state:v1:'+userId+':'+id);
+  return reply({ok:true});
+ }
  const cacheKey = 'workspace-state:v1:'+userId+':'+id;
  if (resource === 'state' && request.method === 'GET') {
   const cached = await env.CODEFORGE_KV.get(cacheKey);
