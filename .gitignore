@@ -5,3 +5,10 @@ dist/
 .env.*.local
 .wrangler/
 .DS_Store
+
+# Native shells
+apps/mobile/node_modules/
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/desktop/node_modules/
+apps/desktop/src-tauri/target/
