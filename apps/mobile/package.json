@@ -7,7 +7,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "build": "expo export --platform all",
+    "build": "expo export --platform ios && expo export --platform android",
     "doctor": "expo-doctor"
   },
   "dependencies": {
