@@ -4,6 +4,8 @@ on:
   pull_request:
     types:
       - closed
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
