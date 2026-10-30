@@ -1,28 +1,59 @@
-import { supabaseRequest } from './supabase';
-import { getD1Database, getKVNamespace } from './cloudflare';
+import { apiRequest } from './supabase';
 
-export type Workspace = { id: string; name: string; slug: string; description: string | null };
+export type Workspace = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
-export function listWorkspaces() {
-  return supabaseRequest<Workspace[]>('workspaces?select=id,name,slug,description&order=created_at.desc');
+export async function listWorkspaces(): Promise<Workspace[]> {
+  const result = await apiRequest<{ workspaces: Workspace[] }>('/api/workspaces');
+  return result.workspaces;
 }
 
-// D1 & KV Integration for Workspace State
-export async function syncWorkspaceStateToD1(env: any, workspaceId: string, state: string) {
-  const db = await getD1Database(env);
-  await db.prepare(
-    "INSERT INTO workspace_state (workspace_id, state) VALUES (?, ?) ON CONFLICT(workspace_id) DO UPDATE SET state = excluded.state"
-  )
-  .bind(workspaceId, state)
-  .run();
+export async function createWorkspace(name: string, description?: string): Promise<Workspace> {
+  const result = await apiRequest<{ workspace: Workspace }>('/api/workspaces', {
+    method: 'POST',
+    body: JSON.stringify({ name, description }),
+  });
+  return result.workspace;
 }
 
-export async function getWorkspaceStateFromKV(env: any, workspaceId: string) {
-  const kv = await getKVNamespace(env);
-  return await kv.get(`workspace_${workspaceId}`);
+export async function renameWorkspace(id: string, name: string): Promise<Workspace> {
+  const result = await apiRequest<{ workspace: Workspace }>(`/api/workspaces/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  return result.workspace;
 }
 
-export async function setWorkspaceStateInKV(env: any, workspaceId: string, state: string) {
-  const kv = await getKVNamespace(env);
-  return await kv.put(`workspace_${workspaceId}`, state);
+export async function deleteWorkspace(id: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${id}`, { method: 'DELETE' });
+}
+
+export async function getWorkspaceState(id: string): Promise<unknown> {
+  const result = await apiRequest<{ state: unknown }>(`/api/workspaces/${id}/state`);
+  return result.state;
+}
+
+export async function saveWorkspaceState(id: string, state: unknown): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${id}/state`, {
+    method: 'PUT',
+    body: JSON.stringify({ state }),
+  });
+}
+
+export async function listWorkspaceFiles(id: string) {
+  const result = await apiRequest<{ files: Array<{ id: string; path: string; content: string; language: string | null }> }>(`/api/workspaces/${id}/files`);
+  return result.files;
+}
+
+export async function saveWorkspaceFile(id: string, path: string, content: string, language?: string): Promise<void> {
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${id}/files`, {
+    method: 'PUT',
+    body: JSON.stringify({ path, content, language }),
+  });
 }
