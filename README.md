@@ -51,7 +51,7 @@ The Supabase publishable key is intended for public clients. Never use a Supabas
 The `.github/workflows/deploy-worker.yml` workflow deploys after a pull request is merged into `main` (and can also be started manually with `workflow_dispatch`). Configure these repository settings:
 
 - Repository variable `VITE_SUPABASE_URL`
-- Repository secrets `VITE_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_PUBLISHABLE_KEY` (same current Supabase publishable key)
+- Repository secret `VITE_SUPABASE_PUBLISHABLE_KEY` (the deployment workflow uses this same publishable key for the Worker runtime auth binding)
 - Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
 
 The Cloudflare token should be narrowly scoped to the CodeForge account with Workers Scripts Edit, D1 Edit, and Workers KV Storage Edit. Do not reuse any token previously pasted into chat; revoke it and create a replacement first.

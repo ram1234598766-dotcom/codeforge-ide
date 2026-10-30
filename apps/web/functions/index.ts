@@ -1,5 +1,6 @@
+import { getPublicSupabaseConfig } from './config';
 import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
-interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string; APP_ENCRYPTION_KEY: string; }
+interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number }): Promise<{ response?: string; usage?: unknown }>;
 }
@@ -67,6 +68,10 @@ async function workspaceRole(env: Env, userId: string, workspaceId: string): Pro
 
 async function api(request: Request, env: Env): Promise<Response> {
  const url = new URL(request.url), path = url.pathname.replace(/\/$/, '');
+ if (path === '/api/config' && request.method === 'GET') {
+  const config = getPublicSupabaseConfig(env);
+  return config ? reply(config) : reply({ error: 'Supabase Auth is not configured on this Worker.' }, 503);
+ }
  if (path === '/api/health' && request.method === 'GET') {
   try { await env.CODEFORGE_DB.prepare('SELECT 1').first(); return reply({ok:true,database:'connected'}); }
   catch { return reply({ok:false,database:'unavailable'},503); }
