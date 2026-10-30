@@ -52,15 +52,15 @@ describe('resolveSupabaseConfig', () => {
 
 
 describe('Supabase OAuth callback configuration', () => {
-  it('always returns to the hosted CodeForge app, never localhost', () => {
-    expect(getSupabaseRedirectUrl()).toBe('https://codeforge-ide.vasudevaya.workers.dev');
+  it('uses the exact slash-terminated hosted URL to match Supabase URL Configuration entries', () => {
+    expect(getSupabaseRedirectUrl()).toBe('https://codeforge-ide.vasudevaya.workers.dev/');
   });
 
   it('uses the same canonical callback for Google and GitHub', () => {
     const redirectTo = getSupabaseRedirectUrl();
     expect(['google', 'github'].map(() => redirectTo)).toEqual([
-      'https://codeforge-ide.vasudevaya.workers.dev',
-      'https://codeforge-ide.vasudevaya.workers.dev',
+      'https://codeforge-ide.vasudevaya.workers.dev/',
+      'https://codeforge-ide.vasudevaya.workers.dev/',
     ]);
   });
 
