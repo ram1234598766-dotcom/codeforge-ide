@@ -52,7 +52,6 @@ jobs:
           if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
           & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $pfxPasswordText $installer.FullName
           if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }
-          Export-Certificate -Cert $cert -FilePath (Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer") | Out-Null
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item $installer.FullName release/CodeForge-Setup-Windows.exe
           $certPath = Join-Path $env:RUNNER_TEMP "CodeForge-SelfSigned.cer"
