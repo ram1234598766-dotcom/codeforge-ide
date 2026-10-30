@@ -1,13 +1,14 @@
 name: Deploy CodeForge Worker
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     types:
       - closed
   workflow_dispatch:
+
+concurrency:
+  group: codeforge-worker-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
