@@ -13,7 +13,7 @@ import { WebView } from 'react-native-webview';
 const CODEFORGE_URL = 'https://codeforge-ide.vasudevaya.workers.dev';
 
 export default function App() {
-  const webView = useRef<WebView>(null);
+  const webView = useRef<WebView | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
