@@ -216,12 +216,12 @@ export type CodeChangeRequest = {
 };
 
 export async function listCodeChanges(workspaceId: string): Promise<CodeChangeRequest[]> {
-  const result = await apiRequest<{ changes: CodeChangeRequest[] }>(\`/api/workspaces/\${workspaceId}/changes\`);
+  const result = await apiRequest<{ changes: CodeChangeRequest[] }>(`/api/workspaces/${workspaceId}/changes`);
   return result.changes;
 }
 
 export async function proposeCodeChange(workspaceId: string, path: string, proposedContent: string): Promise<CodeChangeRequest> {
-  const result = await apiRequest<{ change: CodeChangeRequest }>(\`/api/workspaces/\${workspaceId}/changes\`, {
+  const result = await apiRequest<{ change: CodeChangeRequest }>(`/api/workspaces/${workspaceId}/changes`, {
     method: 'POST',
     body: JSON.stringify({ path, proposedContent }),
   });
@@ -229,9 +229,9 @@ export async function proposeCodeChange(workspaceId: string, path: string, propo
 }
 
 export async function approveCodeChange(workspaceId: string, changeId: string): Promise<void> {
-  await apiRequest<{ ok: boolean }>(\`/api/workspaces/\${workspaceId}/changes/\${changeId}/approve\`, { method: 'POST' });
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${workspaceId}/changes/${changeId}/approve`, { method: 'POST' });
 }
 
 export async function rejectCodeChange(workspaceId: string, changeId: string): Promise<void> {
-  await apiRequest<{ ok: boolean }>(\`/api/workspaces/\${workspaceId}/changes/\${changeId}/reject\`, { method: 'POST' });
+  await apiRequest<{ ok: boolean }>(`/api/workspaces/${workspaceId}/changes/${changeId}/reject`, { method: 'POST' });
 }
