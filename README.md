@@ -1,27 +1,34 @@
 # CodeForge
 
-A powerful, customizable AI-native development environment for web, desktop, and mobile.
+CodeForge is an interactive AI-native development environment for web, desktop, and mobile.
 
-## Live services
+## Repository
 
-- Web: https://codeforge-ide-b05.pages.dev
 - GitHub: https://github.com/ram1234598766-dotcom/codeforge-ide
 - Supabase: https://rbgnjcquiqszkeiumueo.supabase.co
+- Cloudflare URL: https://codeforge-ide.vasudevaya.workers.dev/
 
-## Apps
+## Web app
 
-- `apps/web` — Cloudflare Pages-ready web IDE shell with Supabase workspace connectivity
-- `apps/desktop` — Tauri 2 desktop client foundation
-- `apps/mobile` — Expo mobile companion foundation
+The web app is in `apps/web` and is built with Vite, React, TypeScript, and Lucide.
 
-## Backend
+The root `build` script intentionally uses npm inside `apps/web` so Cloudflare projects configured with `npm run build` can build this monorepo without requiring a committed pnpm lockfile.
 
-The Supabase project contains profiles, workspaces, workspace members, files, agent runs, and audit events with Row Level Security enabled.
-
-## Development
+## Local development
 
 ```bash
-pnpm install
+npm --prefix apps/web install
 cp apps/web/.env.example apps/web/.env.local
-pnpm dev:web
+npm --prefix apps/web run dev
 ```
+
+## Supabase variables
+
+Set these as build-time variables in the deployment provider:
+
+```text
+VITE_SUPABASE_URL=https://rbgnjcquiqszkeiumueo.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Never commit service-role keys or other private credentials.
