@@ -1,10 +1,19 @@
-export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' } | null;
+export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' } | null;
+export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;
+
+export function parseWorkspaceChangeRoute(pathname: string): WorkspaceChangeRoute {
+  const path = pathname.replace(/\\/$/, '');
+  const match = path.match(/^\\/api\\/workspaces\\/([a-f0-9-]{36})\\/changes(?:\\/([a-f0-9-]{36})\\/(approve|reject))?$/i);
+  if (!match) return null;
+  return { workspaceId: match[1], ...(match[2] ? { changeId: match[2], action: match[3] as 'approve' | 'reject' } : {}) };
+}
+
 
 export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   const path = pathname.replace(/\/$/, '');
-  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites))?$/i);
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions))?$/i);
   if (!match) return null;
-  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | undefined };
+  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | undefined };
 }
 
 export const AGENT_TYPES = ['planner', 'coder', 'reviewer', 'debugger', 'tester', 'refactorer', 'security', 'documentation'] as const;
@@ -40,12 +49,10 @@ export function validateWorkspaceFilePath(path: unknown): string | null {
   return null;
 }
 
-export function canEditWorkspaceRole(role: string | null): boolean {
-  return role === 'owner' || role === 'admin' || role === 'editor';
-}
-export function canAdminWorkspaceRole(role: string | null): boolean {
-  return role === 'owner' || role === 'admin';
-}
-export function canDeleteWorkspaceRole(role: string | null): boolean {
-  return role === 'owner';
+export function validateCodeChange(path: unknown, content: unknown): string | null {
+  const pathError = validateWorkspaceFilePath(path);
+  if (pathError) return pathError;
+  if (typeof content !== 'string') return 'Proposed content must be text.';
+  if (new TextEncoder().encode(content).byteLength > 1_000_000) return 'Proposed content must be 1 MB or smaller.';
+  return null;
 }
