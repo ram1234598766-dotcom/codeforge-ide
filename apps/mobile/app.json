@@ -2,7 +2,7 @@
   "expo": {
     "name": "CodeForge",
     "slug": "codeforge",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "default",
     "scheme": "codeforge",
     "userInterfaceStyle": "dark",
@@ -11,7 +11,11 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.codeforge.ide"
+      "package": "com.codeforge.ide",
+      "versionCode": 1,
+      "permissions": ["INTERNET"],
+      "allowBackup": false,
+      "softwareKeyboardLayoutMode": "pan"
     }
   }
 }
