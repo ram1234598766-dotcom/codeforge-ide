@@ -1,9 +1,11 @@
+# Cloudflare Pages Configuration (Static Site)
+# Pages automatically deploys the `pages_build_output_dir` after `npm run build`.
+# Functions are located in apps/web/functions/
+
 name = "codeforge-ide"
 compatibility_date = "2026-10-30"
-main = "apps/web/functions/index.ts" # Entry point for Worker Functions
-workers_dev = true # Enables codeforge-ide.vasudevaya.workers.dev
 
-# Cloudflare Pages Output Directory (for static assets)
+# Cloudflare Pages Output Directory
 pages_build_output_dir = "apps/web/dist"
 
 # Environment Variables for Build
@@ -11,23 +13,6 @@ pages_build_output_dir = "apps/web/dist"
 VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_a32yW-Ajq9KHgCDQoUBogg_yGOv3wXk"
 
-# D1 Database Binding (Replace <D1_DATABASE_ID> with your actual D1 ID)
-[[d1_databases]]
-binding = "CODEFORGE_DB"
-database_id = "<D1_DATABASE_ID>" # e.g., "12345678-1234-1234-1234-1234567890ab"
-database_name = "codeforge_d1"
-
-# KV Namespace Binding (Replace <KV_NAMESPACE_ID> with your actual KV ID)
-[[kv_namespaces]]
-binding = "CODEFORGE_KV"
-id = "<KV_NAMESPACE_ID>" # e.g., "abcdef1234567890abcdef1234567890"
-
-# Build configuration for Worker Functions
-[build]
-command = "npm --prefix apps/web install --no-audit --no-fund && npm --prefix apps/web run build"
-cwd = "apps/web"
-
-# Note: For Cloudflare Pages (static site), the build command in GitHub Actions/Pages
-# will still use `npm run build` and deploy `apps/web/dist`.
-# For Worker deployment (codeforge-ide.vasudevaya.workers.dev), `npx wrangler deploy`
-# will use the `main` entry point and bindings defined above.
+# Note: D1 and KV bindings are configured in the Cloudflare Dashboard for Pages Functions.
+# Binding names: CODEFORGE_DB (D1), CODEFORGE_KV (KV)
+# Do NOT include [[d1_databases]] or [[kv_namespaces]] here to avoid Wrangler application detection error in Pages build.
