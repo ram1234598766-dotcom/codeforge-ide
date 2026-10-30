@@ -45,23 +45,61 @@ function isProviderId(value: unknown): value is ProviderId {
  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROVIDERS,value);
 }
 
-async function authenticate(request: Request, env: Env): Promise<string | null> {
+type AuthUser = { id: string; email: string | null };
+async function authenticate(request: Request, env: Env): Promise<AuthUser | null> {
  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
  if (!token || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
  const res = await fetch(env.SUPABASE_URL + '/auth/v1/user', { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, authorization: 'Bearer ' + token } });
  if (!res.ok) return null;
- const user = await res.json() as { id?: string };
- return user.id || null;
+ const user = await res.json() as { id?: string; email?: string };
+ return user.id ? { id:user.id, email:user.email || null } : null;
 }
+async function workspaceRole(env: Env, userId: string, workspaceId: string): Promise<string | null> {
+ const member = await env.CODEFORGE_DB.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').bind(workspaceId,userId).first<{role:string}>();
+ if (member?.role) return member.role;
+ const owner = await env.CODEFORGE_DB.prepare('SELECT user_id FROM workspaces WHERE id=?').bind(workspaceId).first<{user_id:string}>();
+ return owner?.user_id === userId ? 'owner' : null;
+}
+const canEdit = (role: string | null) => role === 'owner' || role === 'admin' || role === 'editor';
+const canAdmin = (role: string | null) => role === 'owner' || role === 'admin';
 async function api(request: Request, env: Env): Promise<Response> {
  const url = new URL(request.url), path = url.pathname.replace(/\/$/, '');
  if (path === '/api/health' && request.method === 'GET') {
   try { await env.CODEFORGE_DB.prepare('SELECT 1').first(); return reply({ok:true,database:'connected'}); }
   catch { return reply({ok:false,database:'unavailable'},503); }
  }
- const userId = await authenticate(request, env);
- if (!userId) return reply({error:'Authentication required'},401);
+ const authUser = await authenticate(request, env);
+ if (!authUser) return reply({error:'Authentication required'},401);
+ const userId = authUser.id;
 
+ if (path === '/api/profile' && request.method === 'GET') {
+  const profile=await env.CODEFORGE_DB.prepare('SELECT user_id,display_name,avatar_url,created_at,updated_at FROM profiles WHERE user_id=?').bind(userId).first();
+  return reply({profile:profile || {user_id:userId,display_name:null,avatar_url:null},email:authUser.email});
+ }
+ if (path === '/api/profile' && request.method === 'PUT') {
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const displayName=typeof body?.displayName==='string'?body.displayName.trim():'';
+  const avatarUrl=typeof body?.avatarUrl==='string'?body.avatarUrl.trim():'';
+  if(displayName.length>80) return reply({error:'Display name must be 80 characters or fewer'},400);
+  if(avatarUrl && (!avatarUrl.startsWith('https://') || avatarUrl.length>500)) return reply({error:'Avatar URL must be HTTPS and 500 characters or fewer'},400);
+  await env.CODEFORGE_DB.prepare('INSERT INTO profiles(user_id,display_name,avatar_url) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET display_name=excluded.display_name,avatar_url=excluded.avatar_url,updated_at=CURRENT_TIMESTAMP').bind(userId,displayName || null,avatarUrl || null).run();
+  return reply({ok:true});
+ }
+ if (path === '/api/invites/accept' && request.method === 'POST') {
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const token=typeof body?.token==='string'?body.token:'';
+  if(!token || token.length>200 || !authUser.email) return reply({error:'A valid invitation token and verified email are required'},400);
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+  const tokenHash=bytesToBase64(new Uint8Array(digest));
+  const invite=await env.CODEFORGE_DB.prepare("SELECT id,workspace_id,email,role FROM workspace_invites WHERE token_hash=? AND accepted_at IS NULL AND expires_at>CURRENT_TIMESTAMP").bind(tokenHash).first<{id:string;workspace_id:string;email:string;role:string}>();
+  if(!invite) return reply({error:'Invitation is invalid or expired'},404);
+  if(invite.email.toLowerCase()!==authUser.email.toLowerCase()) return reply({error:'Sign in with the email address this invitation was sent to'},403);
+  await env.CODEFORGE_DB.prepare('INSERT INTO workspace_members(workspace_id,user_id,role) VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET role=excluded.role').bind(invite.workspace_id,userId,invite.role).run();
+  await env.CODEFORGE_DB.prepare('UPDATE workspace_invites SET accepted_at=CURRENT_TIMESTAMP WHERE id=?').bind(invite.id).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,invite.workspace_id,'workspace.invite.accepted',JSON.stringify({role:invite.role})).run();
+  const workspace=await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=?').bind(invite.workspace_id).first();
+  return reply({ok:true,workspace});
+ }
  if (path === '/api/settings/providers' && request.method === 'GET') {
   const result=await env.CODEFORGE_DB.prepare('SELECT provider,model,base_url,created_at,updated_at FROM user_provider_keys WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();
   return reply({providers:result.results || []});
@@ -109,10 +147,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const taskError = validateAgentTask(body?.task);
   if (taskError) return reply({error:taskError},400);
   const workspaceId = typeof body.workspaceId === 'string' ? body.workspaceId : null;
-  if (workspaceId) {
-   const owned = await env.CODEFORGE_DB.prepare('SELECT id FROM workspaces WHERE id=? AND user_id=?').bind(workspaceId,userId).first();
-   if (!owned) return reply({error:'Workspace not found'},404);
-  }
+  if (workspaceId && !(await workspaceRole(env,userId,workspaceId))) return reply({error:'Workspace not found'},404);
   const context = body.context && typeof body.context === 'object' ? body.context : {};
   const filePath = typeof context.filePath === 'string' ? context.filePath.slice(0,500) : '';
   const fileContent = typeof context.content === 'string' ? context.content.slice(0,20000) : '';
@@ -167,7 +202,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   }
  }
  if (path === '/api/workspaces' && request.method === 'GET') {
-  const result = await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();
+  const result = await env.CODEFORGE_DB.prepare("SELECT DISTINCT w.id,w.name,w.slug,w.description,w.created_at,w.updated_at,COALESCE(m.role,'owner') AS role FROM workspaces w LEFT JOIN workspace_members m ON m.workspace_id=w.id AND m.user_id=? WHERE w.user_id=? OR m.user_id=? ORDER BY w.updated_at DESC").bind(userId,userId,userId).all();
   return reply({workspaces:result.results || []});
  }
  if (path === '/api/workspaces' && request.method === 'POST') {
@@ -177,15 +212,17 @@ async function api(request: Request, env: Env): Promise<Response> {
   const name = body.name.trim();
   const id = crypto.randomUUID(), slug = name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,70) + '-' + id.slice(0,8);
   await env.CODEFORGE_DB.prepare('INSERT INTO workspaces(id,user_id,name,slug,description) VALUES(?,?,?,?,?)').bind(id,userId,name,slug,typeof body.description==='string'?body.description.slice(0,500):null).run();
+  await env.CODEFORGE_DB.prepare("INSERT INTO workspace_members(workspace_id,user_id,role) VALUES(?,?,'owner')").bind(id,userId).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.created',JSON.stringify({name})).run();
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()},201);
  }
  const route = parseWorkspaceRoute(path);
  if (!route) return reply({error:'Not found'},404);
  const { workspaceId: id, resource } = route;
- const own = await env.CODEFORGE_DB.prepare('SELECT id FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first();
- if (!own) return reply({error:'Workspace not found'},404);
+ const role = await workspaceRole(env,userId,id);
+ if (!role) return reply({error:'Workspace not found'},404);
  if (!resource && request.method === 'PATCH') {
+  if (!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const nameError=validateWorkspaceName(body?.name);
   if(nameError) return reply({error:nameError},400);
@@ -195,10 +232,43 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()});
  }
  if (!resource && request.method === 'DELETE') {
+  if (role !== 'owner') return reply({error:'Workspace owner role required'},403);
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.deleted','{}').run();
   await env.CODEFORGE_DB.prepare('DELETE FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).run();
   await env.CODEFORGE_KV.delete('workspace-state:v1:'+userId+':'+id);
   return reply({ok:true});
+ }
+ if (resource === 'members' && request.method === 'GET') {
+  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  const result=await env.CODEFORGE_DB.prepare('SELECT m.user_id,m.role,m.created_at,p.display_name,p.avatar_url FROM workspace_members m LEFT JOIN profiles p ON p.user_id=m.user_id WHERE m.workspace_id=? ORDER BY CASE m.role WHEN \'owner\' THEN 0 WHEN \'admin\' THEN 1 WHEN \'editor\' THEN 2 ELSE 3 END,m.created_at').bind(id).all();
+  return reply({members:result.results || []});
+ }
+ if (resource === 'members' && request.method === 'DELETE') {
+  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const memberId=typeof body?.userId==='string'?body.userId:'';
+  if(!memberId || memberId===userId) return reply({error:'Invalid member user ID'},400);
+  const target=await env.CODEFORGE_DB.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').bind(id,memberId).first<{role:string}>();
+  if(!target || target.role==='owner' || (target.role==='admin' && role!=='owner')) return reply({error:'Member cannot be removed by this role'},403);
+  await env.CODEFORGE_DB.prepare('DELETE FROM workspace_members WHERE workspace_id=? AND user_id=?').bind(id,memberId).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.member.removed',JSON.stringify({memberId})).run();
+  return reply({ok:true});
+ }
+ if (resource === 'invites' && request.method === 'POST') {
+  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+  const email=typeof body?.email==='string'?body.email.trim().toLowerCase():'';
+  const inviteRole=body?.role;
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254) return reply({error:'Enter a valid email address'},400);
+  if(!['admin','editor','viewer'].includes(inviteRole)) return reply({error:'Invalid invitation role'},400);
+  const random=crypto.getRandomValues(new Uint8Array(32));
+  const token=bytesToBase64(random).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
+  const tokenHash=bytesToBase64(new Uint8Array(digest));
+  const inviteId=crypto.randomUUID();
+  await env.CODEFORGE_DB.prepare("INSERT INTO workspace_invites(id,workspace_id,inviter_id,email,role,token_hash,expires_at) VALUES(?,?,?,?,?,?,datetime('now','+7 days'))").bind(inviteId,id,userId,email,inviteRole,tokenHash).run();
+  await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.invite.created',JSON.stringify({email,role:inviteRole})).run();
+  return reply({ok:true,inviteUrl:url.origin+'/?invite='+encodeURIComponent(token),expiresInDays:7},201);
  }
  const cacheKey = 'workspace-state:v1:'+userId+':'+id;
  if (resource === 'versions' && request.method === 'GET') {
@@ -209,6 +279,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({versions:result.results || []});
  }
  if (resource === 'versions' && request.method === 'POST') {
+  if (!canEdit(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const versionId=typeof body?.versionId==='string'?body.versionId:'';
   if(!versionId) return reply({error:'Version ID is required'},400);
@@ -231,6 +302,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({state,cached:false});
  }
  if (resource === 'state' && request.method === 'PUT') {
+  if (!canEdit(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   if (!body || !Object.prototype.hasOwnProperty.call(body,'state')) return reply({error:'State is required'},400);
   const value=JSON.stringify(body.state); if(value.length>256000) return reply({error:'State too large'},413);
@@ -242,6 +314,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({files:result.results || []});
  }
  if (resource === 'files' && request.method === 'DELETE') {
+  if (!canEdit(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
@@ -253,6 +326,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({ok:true,path:filePath});
  }
  if (resource === 'files' && request.method === 'PUT') {
+  if (!canEdit(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
