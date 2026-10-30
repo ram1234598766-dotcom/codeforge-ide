@@ -64,3 +64,32 @@ export async function deleteWorkspaceFile(id: string, path: string): Promise<voi
     body: JSON.stringify({ path }),
   });
 }
+
+export type AgentRun = {
+  id: string;
+  workspace_id: string | null;
+  task: string;
+  agent_type: string;
+  status: string;
+  result_json: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ActivityEvent = {
+  id: string;
+  workspace_id: string | null;
+  action: string;
+  metadata_json: string;
+  created_at: string;
+};
+
+export async function listAgentRuns(): Promise<AgentRun[]> {
+  const result = await apiRequest<{ runs: AgentRun[] }>('/api/agents/runs');
+  return result.runs;
+}
+
+export async function listActivity(): Promise<ActivityEvent[]> {
+  const result = await apiRequest<{ events: ActivityEvent[] }>('/api/activity');
+  return result.events;
+}
