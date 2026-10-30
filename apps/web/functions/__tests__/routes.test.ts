@@ -82,3 +82,9 @@ describe('validateWorkspaceFilePath', () => {
     expect(validateWorkspaceFilePath('src/../secrets.txt')).toBe('Invalid file path.');
   });
 });
+
+describe('parseWorkspaceRoute version history', () => {
+  it('matches workspace file version routes', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/versions`)).toEqual({ workspaceId: id, resource: 'versions' });
+  });
+});
