@@ -25,3 +25,15 @@
 .agent-output button{border:1px solid #30443e;border-radius:5px;background:#13251d;color:#a8f6c1;padding:4px 8px;font-size:10px}
 .agent-output pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#d5dfeb;font:11px/1.65 'DM Mono',monospace;margin:12px 0 0}
 .prompt-input button:disabled{opacity:.45}
+
+
+.side-actions{display:flex;align-items:center;gap:3px}
+.side-actions .icon-button:disabled{opacity:.35;cursor:not-allowed}
+.file-row{display:flex;align-items:center;min-width:0}
+.file-row .file{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-delete{width:22px;height:24px;display:grid;place-items:center;border:0;border-radius:4px;background:transparent;color:#66788a;opacity:0}
+.file-row:hover .file-delete,.file-row:focus-within .file-delete{opacity:1}
+.file-delete:hover{background:#352126;color:#ff9a9a}
+.search-results{display:grid;gap:4px;max-height:260px;overflow:auto;margin:10px 0}
+.search-results button{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #24323d;border-radius:5px;background:#101922;color:#c9d7e6;text-align:left;font:11px 'DM Mono'}
+.search-results button:hover{border-color:#719b86;background:#13251e}
