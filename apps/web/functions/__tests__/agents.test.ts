@@ -53,3 +53,19 @@ describe('parseAgentOutput', () => {
     }))).toThrow('at most 12');
   });
 });
+
+
+import { getAgentFileDisposition } from '../agents';
+
+describe('getAgentFileDisposition', () => {
+  it('creates only when the requested path is absent', () => {
+    expect(getAgentFileDisposition('create', null, 'new content')).toBe('create');
+    expect(getAgentFileDisposition('create', 'existing content', 'new content')).toBe('skip');
+  });
+
+  it('proposes an update only for an existing file with different content', () => {
+    expect(getAgentFileDisposition('update', 'old content', 'new content')).toBe('propose');
+    expect(getAgentFileDisposition('update', null, 'new content')).toBe('skip');
+    expect(getAgentFileDisposition('update', 'same content', 'same content')).toBe('skip');
+  });
+});

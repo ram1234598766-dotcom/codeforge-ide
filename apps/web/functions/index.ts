@@ -1,7 +1,7 @@
 import { getPublicSupabaseConfig } from './config';
 import { preventHtmlAssetCaching } from './assets';
 import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName, validateWorkspaceSearchQuery } from './routes';
-import { parseAgentOutput } from './agents';
+import { getAgentFileDisposition, parseAgentOutput } from './agents';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL?: string; SUPABASE_PUBLISHABLE_KEY?: string; VITE_SUPABASE_URL?: string; VITE_SUPABASE_PUBLISHABLE_KEY?: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number; response_format?: { type: 'json_object' } }): Promise<{ response?: string; usage?: unknown }>;
@@ -331,17 +331,18 @@ Use an empty actions array for explanation-only questions. When asked to build, 
    if (parsed.actions.length && canWriteFiles && workspaceId) {
     for (const action of parsed.actions) {
      const existing = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND path=?').bind(workspaceId,action.path).first<{content:string}>();
-     if (!existing) {
+     const disposition = getAgentFileDisposition(action.type, existing?.content ?? null, action.content);
+     if (disposition === 'skip') { skippedFileActions += 1; continue; }
+     if (disposition === 'create') {
       const inserted = await env.CODEFORGE_DB.prepare('INSERT INTO workspace_files(id,workspace_id,user_id,path,content,language) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,path) DO NOTHING').bind(crypto.randomUUID(),workspaceId,userId,action.path,action.content,null).run();
       if (inserted.meta?.changes) {
        createdFiles.push(action.path);
        await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,workspaceId,'file.created_by_agent',JSON.stringify({path:action.path,bytes:action.content.length,reason:action.reason})).run();
-       continue;
-      }
+      } else { skippedFileActions += 1; }
+      continue;
      }
-     const current = existing || await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND path=?').bind(workspaceId,action.path).first<{content:string}>();
+     const current = existing;
      if (!current || current.content === action.content) { skippedFileActions += 1; continue; }
-
      const changeId = crypto.randomUUID();
      const originalHash = await sha256Hex(current.content);
      const createdAt = new Date().toISOString();

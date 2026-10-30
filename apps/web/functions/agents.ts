@@ -16,6 +16,18 @@ const MAX_ACTIONS = 12;
 const MAX_FILE_BYTES = 1_000_000;
 const MAX_TOTAL_BYTES = 2_000_000;
 
+export type AgentFileDisposition = 'create' | 'propose' | 'skip';
+
+export function getAgentFileDisposition(
+  actionType: AgentFileAction['type'],
+  existingContent: string | null,
+  proposedContent: string,
+): AgentFileDisposition {
+  if (actionType === 'create') return existingContent === null ? 'create' : 'skip';
+  if (existingContent === null || existingContent === proposedContent) return 'skip';
+  return 'propose';
+}
+
 export function parseAgentOutput(raw: unknown): ParsedAgentOutput {
   if (typeof raw !== 'string' || !raw.trim()) {
     throw new Error('The AI returned an empty response.');
