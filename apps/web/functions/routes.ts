@@ -39,3 +39,13 @@ export function validateWorkspaceFilePath(path: unknown): string | null {
   }
   return null;
 }
+
+export function canEditWorkspaceRole(role: string | null): boolean {
+  return role === 'owner' || role === 'admin' || role === 'editor';
+}
+export function canAdminWorkspaceRole(role: string | null): boolean {
+  return role === 'owner' || role === 'admin';
+}
+export function canDeleteWorkspaceRole(role: string | null): boolean {
+  return role === 'owner';
+}
