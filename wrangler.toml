@@ -1,50 +1,24 @@
-# Cloudflare Worker Configuration for codeforge-ide.vasudevaya.workers.dev
-# This configuration is for the Worker deployment.
-# Note: The Cloudflare Pages Connector in GitHub might conflict if it tries to run 'npx wrangler deploy'
-# on the root workspace. To fix the build error in the Pages pipeline, we previously reverted to
-# a Pages-only config. However, since you specified the Worker URL, here is the correct
-# Wrangler config for the Worker.
-
-# IMPORTANT: If the GitHub Pages Connector is failing with "Wrangler application detection logic",
-# it is because it's trying to deploy the Worker from the root.
-# To fix the build error in the CI/CD (which is currently running 'npx wrangler deploy'),
-# we must ensure the connector targets the correct project OR we remove the Worker config
-# from the root wrangler.toml and handle Worker deployment separately.
-
-# Since the connector is running 'npx wrangler deploy' in the root, and the error persists
-# even with a Pages-only wrangler.toml, it means the connector is HARDCODED to run wrangler deploy
-# on the root workspace. The ONLY way to fix the error in the root workspace is to provide
-# a valid Worker configuration that targets the 'apps/web' directory (where the code is)
-# instead of failing on the root monorepo.
-
 name = "codeforge-ide"
-compatibility_date = "2026-10-30"
 main = "apps/web/functions/index.ts"
-workers_dev = true # Enables codeforge-ide.vasudevaya.workers.dev
+compatibility_date = "2026-10-30"
+workers_dev = true
 
-# Cloudflare Pages Output Directory (for static assets)
-pages_build_output_dir = "apps/web/dist"
+[assets]
+directory = "./apps/web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
-# Environment Variables for Build
 [vars]
+SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
 VITE_SUPABASE_URL = "https://rbgnjcquiqszkeiumueo.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_a32yW-Ajq9KHgCDQoUBogg_yGOv3wXk"
 
-# D1 Database Binding (Replace <D1_DATABASE_ID> with your actual D1 ID)
 [[d1_databases]]
 binding = "CODEFORGE_DB"
-database_id = "<D1_DATABASE_ID>" # e.g., "12345678-1234-1234-1234-1234567890ab"
-database_name = "codeforge_d1"
+database_name = "k"
+database_id = "d54180cb-fe6f-4864-ba16-c7d50f97677b"
+migrations_dir = "migrations"
 
-# KV Namespace Binding (Replace <KV_NAMESPACE_ID> with your actual KV ID)
 [[kv_namespaces]]
 binding = "CODEFORGE_KV"
-id = "<KV_NAMESPACE_ID>" # e.g., "abcdef1234567890abcdef1234567890"
-
-# Build configuration for Worker Functions (targeting apps/web)
-[build]
-command = "npm --prefix apps/web install --no-audit --no-fund && npm --prefix apps/web run build"
-cwd = "apps/web"
-
-# Note: This configuration allows 'npx wrangler deploy' to succeed by targeting 'apps/web'.
-# The Pages build (apps/web/dist) will also be generated.
+id = "581b9fe8b58e4d798a1416514230d9df"
