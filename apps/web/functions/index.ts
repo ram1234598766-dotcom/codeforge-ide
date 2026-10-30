@@ -79,7 +79,7 @@ async function api(request: Request, env: Env): Promise<Response> {
    let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
    const validation = validateCodeChange(body?.path,body?.proposedContent);
    if (validation) return reply({error:validation},400);
-   const filePath = body.path.trim().replace(/^\\/+/, '');
+   const filePath = body.path.trim().replace(/^\/+/, '');
    const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,filePath).first<{content:string}>();
    if (!current) return reply({error:'File not found in this workspace.'},404);
    if (current.content === body.proposedContent) return reply({error:'The proposed content is identical to the current file.'},400);
