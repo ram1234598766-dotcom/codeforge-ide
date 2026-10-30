@@ -88,3 +88,10 @@ describe('parseWorkspaceRoute version history', () => {
     expect(parseWorkspaceRoute(`/api/workspaces/${id}/versions`)).toEqual({ workspaceId: id, resource: 'versions' });
   });
 });
+
+describe('parseWorkspaceRoute collaboration routes', () => {
+  it('matches member and invitation endpoints', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/members`)).toEqual({ workspaceId: id, resource: 'members' });
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/invites`)).toEqual({ workspaceId: id, resource: 'invites' });
+  });
+});
