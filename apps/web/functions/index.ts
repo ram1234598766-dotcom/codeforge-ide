@@ -1,3 +1,4 @@
+import { parseWorkspaceRoute } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string; }
 interface Fetcher { fetch(request: Request): Promise<Response>; }
 interface KVNamespace { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void>; }
@@ -32,9 +33,9 @@ async function api(request: Request, env: Env): Promise<Response> {
   await env.CODEFORGE_DB.prepare('INSERT INTO workspaces(id,user_id,name,slug,description) VALUES(?,?,?,?,?)').bind(id,userId,name,slug,typeof body.description==='string'?body.description.slice(0,500):null).run();
   return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first()},201);
  }
- const m = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})\/(state|files)$/i);
- if (!m) return reply({error:'Not found'},404);
- const [,id,resource] = m;
+ const route = parseWorkspaceRoute(path);
+ if (!route) return reply({error:'Not found'},404);
+ const { workspaceId: id, resource } = route;
  const own = await env.CODEFORGE_DB.prepare('SELECT id FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).first();
  if (!own) return reply({error:'Workspace not found'},404);
  if (!resource && request.method === 'PATCH') {
