@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import Editor from '@monaco-editor/react';
-import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, LogOut, Pencil, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, Trash2, X, Zap } from 'lucide-react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
+import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, History, LogOut, Pencil, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, Trash2, X, Zap } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, supabase, supabaseConfig } from './lib/supabase';
 import {
   createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState,
   type Workspace,
+  type FileVersion,
+  listFileVersions,
+  restoreFileVersion,
   type AgentRun,
   type ActivityEvent,
   type ProviderId,
@@ -110,6 +113,11 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVersions, setHistoryVersions] = useState<FileVersion[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState('');
+  const [versionContent, setVersionContent] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
 
@@ -365,6 +373,30 @@ function App() {
     } catch (error) { setProviderMessage(error instanceof Error ? error.message : 'Could not remove provider.'); }
     finally { setBusy(false); }
   };
+  const openHistory = async (path = selectedPath) => {
+    if (!workspaceId || !path) return;
+    setHistoryOpen(true); setHistoryLoading(true); setHistoryVersions([]); setSelectedVersion(''); setVersionContent('');
+    try {
+      const versions = await listFileVersions(workspaceId, path);
+      setHistoryVersions(versions);
+      if (versions[0]) { setSelectedVersion(versions[0].id); setVersionContent(versions[0].content); }
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load file history.'); }
+    finally { setHistoryLoading(false); }
+  };
+  const restoreVersion = async () => {
+    if (!workspaceId || !selectedVersion || !window.confirm('Restore this version? The current file will be saved as another version.')) return;
+    setBusy(true);
+    try {
+      const restored = await restoreFileVersion(workspaceId, selectedVersion);
+      setFiles(previous => previous.some(file => file.path === restored.path)
+        ? previous.map(file => file.path === restored.path ? { ...file, content: restored.content, language: restored.language || languageFor(restored.path) } : file)
+        : [...previous, { path: restored.path, content: restored.content, language: restored.language || languageFor(restored.path) }]);
+      setOpenPaths(previous => previous.includes(restored.path) ? previous : [...previous, restored.path]);
+      setSelectedPath(restored.path); setContent(restored.content); setSavedContent(restored.content);
+      setHistoryOpen(false); setNotice('File version restored and saved to D1.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not restore version.'); }
+    finally { setBusy(false); }
+  };
   const signOut = async () => { await supabase?.auth.signOut(); };
   const panelTitle = panel === 'explorer' ? 'EXPLORER' : panel === 'source' ? 'SOURCE CONTROL' : panel === 'agents' ? 'AGENTS' : panel === 'terminal' ? 'TERMINAL' : panel === 'settings' ? 'SETTINGS' : 'ACTIVITY';
 
@@ -376,7 +408,7 @@ function App() {
     <header className="topbar">
       <button className="brand brand-button" onClick={() => setPanel('explorer')}><span className="mark"><Sparkles size={17}/></span><span>CodeForge</span><b>ALPHA</b></button>
       <select className="workspace-select" value={workspaceId} onChange={e => selectWorkspace(e.target.value)} aria-label="Workspace">{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={() => setPreviewOpen(value => !value)} disabled={!selectedPath.toLowerCase().endsWith('.html')}><Play size={14}/> Preview</button><button className="run" onClick={save} disabled={!dirty || busy}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
+      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={() => openHistory()} disabled={!selectedPath}><History size={14}/> History</button><button onClick={() => setPreviewOpen(value => !value)} disabled={!selectedPath.toLowerCase().endsWith('.html')}><Play size={14}/> Preview</button><button className="run" onClick={save} disabled={!dirty || busy}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
     </header>
     <section className="layout">
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity], ['settings', Settings2]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
@@ -384,7 +416,7 @@ function App() {
       <div className={previewOpen ? 'editor preview-active' : 'editor'}><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div>{previewOpen && <div className="preview-pane"><div className="preview-head"><span><Play size={12}/> HTML PREVIEW · SANDBOXED</span><button onClick={() => setPreviewOpen(false)}><X size={13}/></button></div><iframe title="Sandboxed HTML preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={selectedPath.toLowerCase().endsWith('.html') ? content : '<!doctype html><html><body style="font:14px sans-serif;padding:24px">Select an HTML file to preview.</body></html>'}/></div>}<div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
       <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
-    {searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
+    {historyOpen && <div className="modal-backdrop" onClick={() => setHistoryOpen(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>FILE VERSION HISTORY</b><small>{selectedPath}</small></div><button onClick={() => setHistoryOpen(false)}><X size={16}/></button></div><div className="history-modal-body"><aside className="version-list">{historyLoading ? <small>Loading versions…</small> : historyVersions.length ? historyVersions.map(version => <button className={selectedVersion === version.id ? 'version-item selected' : 'version-item'} key={version.id} onClick={() => { setSelectedVersion(version.id); setVersionContent(version.content); }}><b>{new Date(version.created_at).toLocaleString()}</b><small>{version.content.length.toLocaleString()} characters</small></button>) : <div className="panel-empty"><History size={18}/><strong>No saved versions</strong><span>Save the file after editing to create a history snapshot.</span></div>}</aside><div className="history-diff">{selectedVersion ? <DiffEditor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} original={versionContent} modified={content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/> : <div className="panel-empty">Select a version to compare.</div>}</div></div><div className="history-modal-foot"><span>Left: selected version · Right: current editor buffer</span><button className="run" onClick={restoreVersion} disabled={!selectedVersion || busy}>Restore selected version</button></div></div></div>}{searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
