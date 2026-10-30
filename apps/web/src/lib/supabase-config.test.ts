@@ -62,6 +62,10 @@ describe('Supabase OAuth callback configuration', () => {
       .toBe('http://localhost:3000');
   });
 
+  it('rejects non-HTTP callback URLs', () => {
+    expect(() => getSupabaseRedirectUrl('javascript:alert(1)')).toThrow('HTTP(S)');
+  });
+
   it('uses PKCE and detects the returned authorization code', () => {
     expect(getSupabaseAuthOptions()).toEqual({
       flowType: 'pkce',
