@@ -19,20 +19,26 @@ type ProviderId = keyof typeof PROVIDERS;
 function bytesToBase64(bytes: Uint8Array): string {
  let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary);
 }
-function base64ToBytes(value: string): Uint8Array {
- const binary = atob(value); return Uint8Array.from(binary, char => char.charCodeAt(0));
+function base64ToArrayBuffer(value: string): ArrayBuffer {
+ const binary=atob(value), bytes=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+ return bytes.buffer;
+}
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+ const copy=new Uint8Array(bytes.length); copy.set(bytes); return copy.buffer;
 }
 async function encryptionKey(env: Env): Promise<CryptoKey> {
  if (!env.APP_ENCRYPTION_KEY) throw new Error('Provider key encryption is not configured.');
- return crypto.subtle.importKey('raw',base64ToBytes(env.APP_ENCRYPTION_KEY),{name:'AES-GCM'},false,['encrypt','decrypt']);
+ return crypto.subtle.importKey('raw',base64ToArrayBuffer(env.APP_ENCRYPTION_KEY),{name:'AES-GCM'},false,['encrypt','decrypt']);
 }
 async function encryptProviderKey(value: string, env: Env): Promise<{ciphertext:string;iv:string}> {
  const iv=crypto.getRandomValues(new Uint8Array(12));
- const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv},await encryptionKey(env),new TextEncoder().encode(value));
+ const plaintext=new TextEncoder().encode(value);
+ const encrypted=await crypto.subtle.encrypt({name:'AES-GCM',iv:toArrayBuffer(iv)},await encryptionKey(env),toArrayBuffer(plaintext));
  return {ciphertext:bytesToBase64(new Uint8Array(encrypted)),iv:bytesToBase64(iv)};
 }
 async function decryptProviderKey(value: string, iv: string, env: Env): Promise<string> {
- const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToBytes(iv)},await encryptionKey(env),base64ToBytes(value));
+ const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToArrayBuffer(iv)},await encryptionKey(env),base64ToArrayBuffer(value));
  return new TextDecoder().decode(decrypted);
 }
 function isProviderId(value: unknown): value is ProviderId {
