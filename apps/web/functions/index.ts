@@ -96,10 +96,10 @@ async function api(request: Request, env: Env): Promise<Response> {
    return reply({ok:true,status:'rejected'});
   }
   if (changeId && action === 'approve' && request.method === 'POST') {
-   const change = await env.CODEFORGE_DB.prepare("SELECT id,file_path,original_content,proposed_content,status FROM code_change_requests WHERE id=? AND workspace_id=? AND user_id=?").bind(changeId,workspaceId,userId).first<{id:string;file_path:string;original_content:string;proposed_content:string;status:string}>();
+   const change = await env.CODEFORGE_DB.prepare("SELECT id,file_path,original_content,original_hash,proposed_content,status FROM code_change_requests WHERE id=? AND workspace_id=? AND user_id=?").bind(changeId,workspaceId,userId).first<{id:string;file_path:string;original_content:string;original_hash:string;proposed_content:string;status:string}>();
    if (!change || change.status !== 'pending') return reply({error:'Pending change request not found.'},404);
    const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,change.file_path).first<{content:string}>();
-   if (!current || await sha256Hex(current.content) !== await sha256Hex(change.original_content)) {
+   if (!current || await sha256Hex(current.content) !== change.original_hash) {
     return reply({error:'The file changed after this proposal was created. Refresh the file and create a new proposal.'},409);
    }
    await env.CODEFORGE_DB.batch([
