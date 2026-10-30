@@ -1,12 +1,12 @@
-import { normalizeAgentType, parseWorkspaceRoute, validateAgentTask, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
+import { normalizeAgentType, parseWorkspaceChangeRoute, parseWorkspaceRoute, validateAgentTask, validateCodeChange, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number }): Promise<{ response?: string; usage?: unknown }>;
 }
 interface Fetcher { fetch(request: Request): Promise<Response>; }
 interface KVNamespace { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void>; }
-interface D1Database { prepare(query: string): D1PreparedStatement; }
-interface D1PreparedStatement { bind(...values: unknown[]): D1PreparedStatement; first<T = Record<string, unknown>>(): Promise<T | null>; all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>; run(): Promise<unknown>; }
+interface D1Database { prepare(query: string): D1PreparedStatement; batch(statements: D1PreparedStatement[]): Promise<unknown[]>; }
+interface D1PreparedStatement { bind(...values: unknown[]): D1PreparedStatement; first<T = Record<string, unknown>>(): Promise<T | null>; all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>; run(): Promise<{ meta?: { changes?: number } }>; }
 const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
 const PROVIDERS = {
@@ -41,6 +41,10 @@ async function decryptProviderKey(value: string, iv: string, env: Env): Promise<
  const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv:base64ToArrayBuffer(iv)},await encryptionKey(env),base64ToArrayBuffer(value));
  return new TextDecoder().decode(decrypted);
 }
+async function sha256Hex(value: string): Promise<string> {
+ const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+ return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+}
 function isProviderId(value: unknown): value is ProviderId {
  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROVIDERS,value);
 }
@@ -62,6 +66,55 @@ async function api(request: Request, env: Env): Promise<Response> {
  const userId = await authenticate(request, env);
  if (!userId) return reply({error:'Authentication required'},401);
 
+ const changeRoute = parseWorkspaceChangeRoute(path);
+ if (changeRoute) {
+  const { workspaceId, changeId, action } = changeRoute;
+  const owned = await env.CODEFORGE_DB.prepare('SELECT id FROM workspaces WHERE id=? AND user_id=?').bind(workspaceId,userId).first();
+  if (!owned) return reply({error:'Workspace not found'},404);
+  if (!changeId && request.method === 'GET') {
+   const result = await env.CODEFORGE_DB.prepare('SELECT id,file_path,original_content,proposed_content,status,created_at,updated_at FROM code_change_requests WHERE workspace_id=? AND user_id=? ORDER BY created_at DESC LIMIT 30').bind(workspaceId,userId).all();
+   return reply({changes:result.results || []});
+  }
+  if (!changeId && request.method === 'POST') {
+   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
+   const validation = validateCodeChange(body?.path,body?.proposedContent);
+   if (validation) return reply({error:validation},400);
+   const filePath = body.path.trim().replace(/^\\/+/, '');
+   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,filePath).first<{content:string}>();
+   if (!current) return reply({error:'File not found in this workspace.'},404);
+   if (current.content === body.proposedContent) return reply({error:'The proposed content is identical to the current file.'},400);
+   const id = crypto.randomUUID();
+   const originalHash = await sha256Hex(current.content);
+   await env.CODEFORGE_DB.prepare('INSERT INTO code_change_requests(id,user_id,workspace_id,file_path,original_content,original_hash,proposed_content) VALUES(?,?,?,?,?,?,?)').bind(id,userId,workspaceId,filePath,current.content,originalHash,body.proposedContent).run();
+   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,workspaceId,'code_change.proposed',JSON.stringify({changeId:id,path:filePath})).run();
+   return reply({change:{id,file_path:filePath,original_content:current.content,proposed_content:body.proposedContent,status:'pending'}},201);
+  }
+  if (changeId && action === 'reject' && request.method === 'POST') {
+   const result = await env.CODEFORGE_DB.prepare("UPDATE code_change_requests SET status='rejected',updated_at=CURRENT_TIMESTAMP,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND user_id=? AND status='pending'").bind(changeId,workspaceId,userId).run();
+   if (!result.meta?.changes) return reply({error:'Pending change request not found.'},404);
+   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,workspaceId,'code_change.rejected',JSON.stringify({changeId})).run();
+   return reply({ok:true,status:'rejected'});
+  }
+  if (changeId && action === 'approve' && request.method === 'POST') {
+   const change = await env.CODEFORGE_DB.prepare("SELECT id,file_path,original_content,proposed_content,status FROM code_change_requests WHERE id=? AND workspace_id=? AND user_id=?").bind(changeId,workspaceId,userId).first<{id:string;file_path:string;original_content:string;proposed_content:string;status:string}>();
+   if (!change || change.status !== 'pending') return reply({error:'Pending change request not found.'},404);
+   const current = await env.CODEFORGE_DB.prepare('SELECT content FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=?').bind(workspaceId,userId,change.file_path).first<{content:string}>();
+   if (!current || await sha256Hex(current.content) !== await sha256Hex(change.original_content)) {
+    return reply({error:'The file changed after this proposal was created. Refresh the file and create a new proposal.'},409);
+   }
+   await env.CODEFORGE_DB.batch([
+    env.CODEFORGE_DB.prepare("INSERT INTO workspace_file_versions(id,workspace_id,user_id,path,content,language) SELECT ?,f.workspace_id,f.user_id,f.path,f.content,f.language FROM workspace_files f JOIN code_change_requests c ON c.workspace_id=f.workspace_id AND c.user_id=f.user_id AND c.file_path=f.path WHERE c.id=? AND c.user_id=? AND c.status='pending' AND f.content=c.original_content AND f.content<>c.proposed_content").bind(crypto.randomUUID(),changeId,userId),
+    env.CODEFORGE_DB.prepare("UPDATE workspace_files SET content=(SELECT proposed_content FROM code_change_requests WHERE id=? AND user_id=? AND status='pending'),updated_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND user_id=? AND path=? AND content=(SELECT original_content FROM code_change_requests WHERE id=? AND user_id=? AND status='pending')").bind(changeId,userId,workspaceId,userId,change.file_path,changeId,userId),
+    env.CODEFORGE_DB.prepare("UPDATE code_change_requests SET status='approved',updated_at=CURRENT_TIMESTAMP,resolved_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND user_id=? AND status='pending' AND EXISTS(SELECT 1 FROM workspace_files WHERE workspace_id=? AND user_id=? AND path=? AND content=(SELECT proposed_content FROM code_change_requests WHERE id=?))").bind(changeId,workspaceId,userId,workspaceId,userId,change.file_path,changeId),
+    env.CODEFORGE_DB.prepare("INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) SELECT ?,user_id,workspace_id,'code_change.approved',? FROM code_change_requests WHERE id=? AND user_id=? AND status='approved'").bind(crypto.randomUUID(),JSON.stringify({changeId,path:change.file_path}),changeId,userId)
+   ]);
+   const final = await env.CODEFORGE_DB.prepare('SELECT status FROM code_change_requests WHERE id=? AND user_id=?').bind(changeId,userId).first<{status:string}>();
+   if (final?.status !== 'approved') return reply({error:'Could not approve this change. The file may have changed or the request was already resolved.'},409);
+   await env.CODEFORGE_KV.delete('workspace-state:v1:'+userId+':'+workspaceId);
+   return reply({ok:true,status:'approved',path:change.file_path});
+  }
+  return reply({error:'Unsupported change request action.'},405);
+ }
  if (path === '/api/settings/providers' && request.method === 'GET') {
   const result=await env.CODEFORGE_DB.prepare('SELECT provider,model,base_url,created_at,updated_at FROM user_provider_keys WHERE user_id=? ORDER BY updated_at DESC').bind(userId).all();
   return reply({providers:result.results || []});
