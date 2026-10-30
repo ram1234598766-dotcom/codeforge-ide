@@ -81,8 +81,7 @@ describe('Supabase publishable key validation', () => {
   const legacyKey = (role: string) => {
     const payload = btoa(JSON.stringify({ iss: 'supabase', role }))
       .replace(/=/g, '')
-      .replace(/\\+/g, '-')
-      .replace(/\\//g, '_');
+      .replace(/=+$/g, '');
     return `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`;
   };
 
