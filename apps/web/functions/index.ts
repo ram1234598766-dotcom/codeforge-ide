@@ -1,4 +1,4 @@
-import { normalizeAgentType, parseWorkspaceRoute, validateAgentTask, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
+import { canAdminWorkspaceRole, canDeleteWorkspaceRole, canEditWorkspaceRole, normalizeAgentType, parseWorkspaceRoute, validateAgentTask, validateWorkspaceFilePath, validateWorkspaceName } from './routes';
 interface Env { CODEFORGE_DB: D1Database; CODEFORGE_KV: KVNamespace; ASSETS: Fetcher; AI: WorkersAI; SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string; APP_ENCRYPTION_KEY: string; }
 interface WorkersAI {
  run(model: string, input: { messages: Array<{ role: 'system' | 'user'; content: string }>; max_tokens?: number; temperature?: number }): Promise<{ response?: string; usage?: unknown }>;
@@ -60,8 +60,7 @@ async function workspaceRole(env: Env, userId: string, workspaceId: string): Pro
  const owner = await env.CODEFORGE_DB.prepare('SELECT user_id FROM workspaces WHERE id=?').bind(workspaceId).first<{user_id:string}>();
  return owner?.user_id === userId ? 'owner' : null;
 }
-const canEdit = (role: string | null) => role === 'owner' || role === 'admin' || role === 'editor';
-const canAdmin = (role: string | null) => role === 'owner' || role === 'admin';
+
 async function api(request: Request, env: Env): Promise<Response> {
  const url = new URL(request.url), path = url.pathname.replace(/\/$/, '');
  if (path === '/api/health' && request.method === 'GET') {
@@ -224,7 +223,7 @@ async function api(request: Request, env: Env): Promise<Response> {
  const role = await workspaceRole(env,userId,id);
  if (!role) return reply({error:'Workspace not found'},404);
  if (!resource && request.method === 'PATCH') {
-  if (!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  if (!canAdminWorkspaceRole(role)) return reply({error:'Workspace admin role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const nameError=validateWorkspaceName(body?.name);
   if(nameError) return reply({error:nameError},400);
@@ -234,19 +233,19 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({workspace:{...await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=?').bind(id).first(),role}});
  }
  if (!resource && request.method === 'DELETE') {
-  if (role !== 'owner') return reply({error:'Workspace owner role required'},403);
+  if (!canDeleteWorkspaceRole(role)) return reply({error:'Workspace owner role required'},403);
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.deleted','{}').run();
   await env.CODEFORGE_DB.prepare('DELETE FROM workspaces WHERE id=? AND user_id=?').bind(id,userId).run();
   await env.CODEFORGE_KV.delete('workspace-state:v1:'+userId+':'+id);
   return reply({ok:true});
  }
  if (resource === 'members' && request.method === 'GET') {
-  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  if(!canAdminWorkspaceRole(role)) return reply({error:'Workspace admin role required'},403);
   const result=await env.CODEFORGE_DB.prepare('SELECT m.user_id,m.role,m.created_at,p.display_name,p.avatar_url FROM workspace_members m LEFT JOIN profiles p ON p.user_id=m.user_id WHERE m.workspace_id=? ORDER BY CASE m.role WHEN \'owner\' THEN 0 WHEN \'admin\' THEN 1 WHEN \'editor\' THEN 2 ELSE 3 END,m.created_at').bind(id).all();
   return reply({members:result.results || []});
  }
  if (resource === 'members' && request.method === 'DELETE') {
-  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  if(!canAdminWorkspaceRole(role)) return reply({error:'Workspace admin role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const memberId=typeof body?.userId==='string'?body.userId:'';
   if(!memberId || memberId===userId) return reply({error:'Invalid member user ID'},400);
@@ -257,7 +256,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({ok:true});
  }
  if (resource === 'invites' && request.method === 'POST') {
-  if(!canAdmin(role)) return reply({error:'Workspace admin role required'},403);
+  if(!canAdminWorkspaceRole(role)) return reply({error:'Workspace admin role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const email=typeof body?.email==='string'?body.email.trim().toLowerCase():'';
   const inviteRole=body?.role;
@@ -281,7 +280,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({versions:result.results || []});
  }
  if (resource === 'versions' && request.method === 'POST') {
-  if (!canEdit(role)) return reply({error:'Editor role required'},403);
+  if (!canEditWorkspaceRole(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const versionId=typeof body?.versionId==='string'?body.versionId:'';
   if(!versionId) return reply({error:'Version ID is required'},400);
@@ -315,7 +314,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({files:result.results || []});
  }
  if (resource === 'files' && request.method === 'DELETE') {
-  if (!canEdit(role)) return reply({error:'Editor role required'},403);
+  if (!canEditWorkspaceRole(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
@@ -327,7 +326,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   return reply({ok:true,path:filePath});
  }
  if (resource === 'files' && request.method === 'PUT') {
-  if (!canEdit(role)) return reply({error:'Editor role required'},403);
+  if (!canEditWorkspaceRole(role)) return reply({error:'Editor role required'},403);
   let body:any; try { body=await request.json(); } catch { return reply({error:'Invalid JSON'},400); }
   const pathError=validateWorkspaceFilePath(body?.path);
   if(pathError) return reply({error:pathError},400);
