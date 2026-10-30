@@ -64,7 +64,7 @@ function AuthScreen() {
     setBusy(true); setError('');
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: getSupabaseRedirectUrl(window.location.href) },
+      options: { redirectTo: getSupabaseRedirectUrl() },
     });
     if (oauthError) { setError(oauthError.message); setBusy(false); }
   };
@@ -74,7 +74,7 @@ function AuthScreen() {
     setBusy(true); setError('');
     const result = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: getSupabaseRedirectUrl(window.location.href) } });
+      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: getSupabaseRedirectUrl() } });
     if (result.error) setError(result.error.message);
     else if (mode === 'signup' && !result.data.session) setError('Check your email to confirm your account, then sign in.');
     setBusy(false);
