@@ -1,0 +1,39 @@
+name: Native shells CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+      - name: Install Expo dependencies
+        run: npm --prefix apps/mobile install --no-audit --no-fund
+      - name: Expo diagnostics
+        working-directory: apps/mobile
+        run: npx expo-doctor
+      - name: Export Android and iOS bundles
+        run: npm --prefix apps/mobile run build
+
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libssl-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install desktop dependencies
+        run: npm --prefix apps/desktop install --no-audit --no-fund
+      - name: Build Tauri desktop shell
+        run: npm --prefix apps/desktop run build
