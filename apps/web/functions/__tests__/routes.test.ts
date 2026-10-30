@@ -171,3 +171,15 @@ describe('validateWorkspaceSearchQuery', () => {
     expect(validateWorkspaceSearchQuery('token', 'regex')).toBe('Search mode must be all, content, or path.');
   });
 });
+
+describe('parseWorkspaceRoute code runs', () => {
+  it('matches workspace execution history and creation routes', () => {
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/runs`)).toEqual({ workspaceId: id, resource: 'runs' });
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/runs/`)).toEqual({ workspaceId: id, resource: 'runs' });
+  });
+
+  it('rejects malformed execution routes', () => {
+    expect(parseWorkspaceRoute('/api/workspaces/not-a-uuid/runs')).toBeNull();
+    expect(parseWorkspaceRoute(`/api/workspaces/${id}/run`)).toBeNull();
+  });
+});

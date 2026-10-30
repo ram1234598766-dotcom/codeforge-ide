@@ -1,10 +1,10 @@
-export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' } | null;
+export type WorkspaceRoute = { workspaceId: string; resource?: 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' | 'runs' } | null;
 
 export function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   const path = pathname.replace(/\/$/, '');
-  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites|search))?$/i);
+  const match = path.match(/^\/api\/workspaces\/([a-f0-9-]{36})(?:\/(state|files|versions|members|invites|search|runs))?$/i);
   if (!match) return null;
-  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' | undefined };
+  return { workspaceId: match[1], resource: match[2] as 'state' | 'files' | 'versions' | 'members' | 'invites' | 'search' | 'runs' | undefined };
 }
 
 export type WorkspaceChangeRoute = { workspaceId: string; changeId?: string; action?: 'approve' | 'reject' } | null;

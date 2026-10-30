@@ -129,7 +129,7 @@ describe('buildHtmlPreview', () => {
     expect(result).toContain('h1 { color: red; }');
     expect(result).toContain('document.body.dataset.started');
     expect(result).not.toContain('https://evil.example/app.js');
-    expect(result).toContain("connect-src &#39;none&#39;");
+    expect(result).toContain("connect-src 'none'");
   });
 
   it('keeps an ordinary static HTML document renderable and adds a restrictive policy', () => {
