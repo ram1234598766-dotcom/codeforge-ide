@@ -18,16 +18,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.13.1
-      - name: Install Expo dependencies
-        working-directory: apps/mobile
-        run: npm install --no-audit --no-fund --package-lock=true
-      - name: Generate pnpm workspace lockfile for Expo diagnostics
-        run: npx --yes pnpm@9.15.0 install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Install Expo dependencies and generate workspace lockfile
+        run: npx --yes pnpm@9.15.0 install --filter @codeforge/mobile... --no-frozen-lockfile
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
       - name: Export Android and iOS bundles
-        run: npm --prefix apps/mobile run build
+        run: npx --yes pnpm@9.15.0 --filter @codeforge/mobile run build
 
   desktop:
     runs-on: ubuntu-latest
