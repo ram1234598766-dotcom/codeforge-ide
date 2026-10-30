@@ -10,7 +10,7 @@ import {
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 
-const CODEFORGE_URL = 'https://codeforge-ide.vasudevaya.workers.dev';
+const CODEFORGE_URL = 'https://codeforge-ide.vasudevaya.workers.dev/app';
 
 export default function App() {
   const webView = useRef<WebView | null>(null);
