@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 
@@ -7,17 +9,25 @@ export const supabaseConfig = {
   configured: Boolean(supabaseUrl && publishableKey),
 };
 
-export async function supabaseRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!supabaseConfig.configured) throw new Error('Supabase is not configured. Copy .env.example to .env.local.');
-  const response = await fetch(`${supabaseConfig.url}/rest/v1/${path}`, {
+export const supabase = supabaseConfig.configured
+  ? createClient(supabaseConfig.url, supabaseConfig.publishableKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    })
+  : null;
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!supabase) throw new Error('Supabase Auth is not configured. Set the VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY build variables.');
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sign in to continue.');
+  const response = await fetch(path, {
     ...init,
     headers: {
-      apikey: supabaseConfig.publishableKey,
-      Authorization: `Bearer ${supabaseConfig.publishableKey}`,
-      'Content-Type': 'application/json',
+      authorization: 'Bearer ' + session.access_token,
+      'content-type': 'application/json',
       ...(init.headers ?? {}),
     },
   });
-  if (!response.ok) throw new Error(`Supabase request failed: ${response.status}`);
-  return response.status === 204 ? (undefined as T) : response.json();
+  const payload = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) throw new Error((payload as { error?: string } | null)?.error || 'CodeForge API request failed.');
+  return payload as T;
 }
