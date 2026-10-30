@@ -83,13 +83,18 @@ The Cloudflare token should be narrowly scoped to the CodeForge account with Wor
 
 Workers AI requests are usage-based and may incur Cloudflare charges. Agent responses are suggestions: they do not directly edit files, execute shell commands, or deploy code.
 
-## Desktop and mobile shells
+## Public home screen, preview, and native apps
 
-- **Desktop:** Tauri 2 shell at `apps/desktop`, loading the hosted Worker website in a native window. No local filesystem or shell permissions are granted yet.
-- **Mobile:** Expo SDK 58 / React Native 0.88 shell at `apps/mobile`, loading the responsive hosted website in a WebView. Native offline editor, notifications, and app-store signing are not yet implemented.
+The public home screen at `/` introduces CodeForge, includes an interactive IDE preview, and links to the browser workspace at `/app` plus the Windows and Android release downloads. The browser preview remains the fastest no-install way to try the current product.
 
-Build commands: `pnpm build:desktop` and `pnpm build:mobile`. The `Native shells CI` workflow validates both projects.
+- **Desktop:** Tauri 2 Windows app at `apps/desktop`, packaged as a per-user NSIS `.exe` installer.
+- **Android:** Expo / React Native shell at `apps/mobile`, packaged as a signed `.apk`.
+- **Shared workspace:** all clients use the same hosted Worker, Supabase identity, D1 workspaces, and KV cache. Sign in with the same account on each device to access the same projects.
+- **Independent operation:** each app can be launched and used without another client being open. Internet access is required for authentication, AI services, and cloud synchronization; this release does not claim offline editing or peer-to-peer device sync.
 
+The production installer workflow builds Windows and Android downloads. Version tags (`v*`) publish both assets to GitHub Releases; manual or main-branch builds upload 30-day Actions artifacts. Android production signing requires persistent repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. Never commit the keystore or its passwords.
+
+Build commands: `pnpm build:desktop` and `pnpm build:mobile`.
 ## Still to build
 
 - Agent-generated patch extraction and automatic proposal creation from model output
