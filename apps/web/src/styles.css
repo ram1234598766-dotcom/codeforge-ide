@@ -79,3 +79,11 @@ button.history-item:hover{border-color:#78a88d;background:#11221b}
 .provider-row button{padding:5px 7px;border:1px solid #344552;border-radius:5px;background:#111c25;color:#b8c8d8;font-size:9px}
 .provider-message{padding:8px;border:1px solid #345a43;border-radius:5px;background:#11251b;color:#b7f4c9;font-size:10px;margin:10px 0}
 .provider-settings>small{display:block;color:#718398;font-size:9px;line-height:1.6;margin-top:12px}
+
+
+.oauth-divider{display:flex;align-items:center;gap:10px;margin:18px 0 10px;color:#68798b;font:9px 'DM Mono';letter-spacing:.8px}
+.oauth-divider:before,.oauth-divider:after{content:'';height:1px;flex:1;background:#263541}
+.oauth-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.oauth-buttons button{padding:10px;border:1px solid #34434f;border-radius:6px;background:#131c25;color:#d5e0eb;font-size:11px}
+.oauth-buttons button:hover{border-color:#8feeb5}
+.oauth-buttons button:disabled{opacity:.45}
