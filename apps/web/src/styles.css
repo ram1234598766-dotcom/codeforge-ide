@@ -37,3 +37,12 @@
 .search-results{display:grid;gap:4px;max-height:260px;overflow:auto;margin:10px 0}
 .search-results button{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #24323d;border-radius:5px;background:#101922;color:#c9d7e6;text-align:left;font:11px 'DM Mono'}
 .search-results button:hover{border-color:#719b86;background:#13251e}
+
+
+.tabs{display:flex;align-items:stretch;gap:2px;overflow-x:auto;flex-shrink:0;scrollbar-width:thin}
+.tab-wrap{display:flex;align-items:center;min-width:0;border-right:1px solid #1d2a34;background:#0c1218}
+.tab-wrap.active{background:#131d25;border-bottom:1px solid #8cf1b4}
+.tab-wrap .tab{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab-close{display:grid;place-items:center;width:24px;height:30px;border:0;background:transparent;color:#718296}
+.tab-close:hover{color:#ffb4b4;background:#352126}
+.tab-empty{padding:9px 13px;color:#697a8c;font:10px 'DM Mono'}
