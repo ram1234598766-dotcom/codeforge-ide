@@ -18,4 +18,4 @@ CREATE INDEX IF NOT EXISTS idx_code_change_requests_owner_status
   ON code_change_requests(user_id, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_code_change_requests_workspace
-  ON code_change_requests(workspace_id, created_at DESC);
+  ON code_change_requests(workspace_id, status, created_at DESC);
