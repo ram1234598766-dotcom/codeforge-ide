@@ -93,6 +93,8 @@ async function api(request: Request, env: Env): Promise<Response> {
   const tokenHash=bytesToBase64(new Uint8Array(digest));
   const invite=await env.CODEFORGE_DB.prepare("SELECT id,workspace_id,email,role FROM workspace_invites WHERE token_hash=? AND accepted_at IS NULL AND expires_at>CURRENT_TIMESTAMP").bind(tokenHash).first<{id:string;workspace_id:string;email:string;role:string}>();
   if(!invite) return reply({error:'Invitation is invalid or expired'},404);
+  const existingMember=await env.CODEFORGE_DB.prepare('SELECT role FROM workspace_members WHERE workspace_id=? AND user_id=?').bind(invite.workspace_id,userId).first<{role:string}>();
+  if(existingMember?.role==='owner') return reply({error:'Workspace owners cannot accept invitations to their own workspace'},409);
   if(invite.email.toLowerCase()!==authUser.email.toLowerCase()) return reply({error:'Sign in with the email address this invitation was sent to'},403);
   await env.CODEFORGE_DB.prepare('INSERT INTO workspace_members(workspace_id,user_id,role) VALUES(?,?,?) ON CONFLICT(workspace_id,user_id) DO UPDATE SET role=excluded.role').bind(invite.workspace_id,userId,invite.role).run();
   await env.CODEFORGE_DB.prepare('UPDATE workspace_invites SET accepted_at=CURRENT_TIMESTAMP WHERE id=?').bind(invite.id).run();
@@ -229,7 +231,7 @@ async function api(request: Request, env: Env): Promise<Response> {
   const name=body.name.trim();
   await env.CODEFORGE_DB.prepare("UPDATE workspaces SET name=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,id).run();
   await env.CODEFORGE_DB.prepare('INSERT INTO audit_events(id,user_id,workspace_id,action,metadata_json) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),userId,id,'workspace.renamed',JSON.stringify({name})).run();
-  return reply({workspace:await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=?').bind(id).first()});
+  return reply({workspace:{...await env.CODEFORGE_DB.prepare('SELECT id,name,slug,description,created_at,updated_at FROM workspaces WHERE id=?').bind(id).first(),role}});
  }
  if (!resource && request.method === 'DELETE') {
   if (role !== 'owner') return reply({error:'Workspace owner role required'},403);
