@@ -6,7 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, supabase, supabaseConfig } from './lib/supabase';
 import {
-  createWorkspace, deleteWorkspace, deleteWorkspaceFile, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile,
+  createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState,
   type Workspace,
 } from './lib/workspaces';
 
@@ -67,6 +67,7 @@ function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [selectedPath, setSelectedPath] = useState('');
   const [content, setContent] = useState(starterCode);
   const [savedContent, setSavedContent] = useState(starterCode);
@@ -102,9 +103,15 @@ function App() {
     if (mapped.length === 0) {
       const initial = { path: 'src/App.tsx', content: starterCode, language: 'typescript' };
       await saveWorkspaceFile(active.id, initial.path, initial.content, initial.language);
-      setFiles([initial]); setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
+      setFiles([initial]); setOpenPaths([initial.path]); setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
     } else {
-      setFiles(mapped); setSelectedPath(mapped[0].path); setContent(mapped[0].content); setSavedContent(mapped[0].content);
+      const state = await getWorkspaceState(active.id) as { openPaths?: unknown; selectedPath?: unknown; agentType?: unknown } | null;
+      const restored = Array.isArray(state?.openPaths) ? state.openPaths.filter((path): path is string => typeof path === 'string' && mapped.some(file => file.path === path)) : [];
+      const activePath = typeof state?.selectedPath === 'string' && mapped.some(file => file.path === state.selectedPath) ? state.selectedPath : (restored[0] || mapped[0].path);
+      setFiles(mapped); setOpenPaths(restored.length ? restored : [activePath]); setSelectedPath(activePath);
+      const activeFile = mapped.find(file => file.path === activePath)!;
+      setContent(activeFile.content); setSavedContent(activeFile.content);
+      if (typeof state?.agentType === 'string') setAgentType(state.agentType);
     }
   }, []);
 
@@ -127,6 +134,39 @@ function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Save failed.'); }
     finally { setBusy(false); }
   };
+  useEffect(() => {
+    if (!workspaceId || connection !== 'connected') return;
+    const timer = window.setTimeout(() => {
+      saveWorkspaceState(workspaceId, { selectedPath, openPaths, agentType }).catch(error => console.error('Could not persist workspace editor state', error));
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [workspaceId, selectedPath, openPaths, agentType, connection]);
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key.toLowerCase() === 's') { event.preventDefault(); void save(); }
+      if (event.key.toLowerCase() === 'p') { event.preventDefault(); setSearchOpen(true); }
+    };
+    window.addEventListener('keydown', onShortcut);
+    return () => window.removeEventListener('keydown', onShortcut);
+  });
+  const openFile = (path: string) => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+    const file = files.find(item => item.path === path);
+    if (!file) return;
+    setOpenPaths(previous => previous.includes(path) ? previous : [...previous, path]);
+    setSelectedPath(path); setContent(file.content); setSavedContent(file.content);
+  };
+  const closeTab = (path: string) => {
+    if (path === selectedPath && dirty && !window.confirm('Discard unsaved changes?')) return;
+    const remaining = openPaths.filter(item => item !== path);
+    setOpenPaths(remaining);
+    if (path === selectedPath) {
+      const nextPath = remaining[remaining.length - 1] || '';
+      const nextFile = files.find(file => file.path === nextPath);
+      setSelectedPath(nextPath); setContent(nextFile?.content || ''); setSavedContent(nextFile?.content || '');
+    }
+  };
   const addFile = async () => {
     if (dirty && !window.confirm('Discard unsaved changes?')) return;
     const path = window.prompt('New file path', 'src/new-file.ts');
@@ -136,7 +176,7 @@ function App() {
     try {
       await saveWorkspaceFile(workspaceId, path, '', languageFor(path));
       const file = { path, content: '', language: languageFor(path) };
-      setFiles(previous => [...previous, file]); setSelectedPath(path); setContent(''); setSavedContent('');
+      setFiles(previous => [...previous, file]); setOpenPaths(previous => [...previous, path]); setSelectedPath(path); setContent(''); setSavedContent('');
       setNotice('File created in Cloudflare D1.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create file.'); }
     finally { setBusy(false); }
@@ -151,7 +191,7 @@ function App() {
       setWorkspaces(previous => [workspace, ...previous]); setWorkspaceId(workspace.id);
       const initial = { path: 'src/App.tsx', content: starterCode, language: 'typescript' };
       await saveWorkspaceFile(workspace.id, initial.path, initial.content, initial.language);
-      setFiles([initial]); setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
+      setFiles([initial]); setOpenPaths([initial.path]); setSelectedPath(initial.path); setContent(initial.content); setSavedContent(initial.content);
       setActivity('Created ' + workspace.name); setNotice('Workspace created.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not create workspace.'); }
     finally { setBusy(false); }
@@ -199,9 +239,10 @@ function App() {
     try {
       await deleteWorkspaceFile(workspaceId, path);
       const remaining = files.filter(file => file.path !== path);
-      setFiles(remaining);
+      setFiles(remaining); setOpenPaths(previous => previous.filter(item => item !== path));
       if (selectedPath === path) {
         setSelectedPath(remaining[0]?.path || '');
+        setOpenPaths(previous => previous.filter(item => item !== path));
         setContent(remaining[0]?.content || '');
         setSavedContent(remaining[0]?.content || '');
       }
@@ -214,9 +255,14 @@ function App() {
     setBusy(true);
     try {
       const saved = await listWorkspaceFiles(id);
-      setWorkspaceId(id);
+      const state = await getWorkspaceState(id) as { openPaths?: unknown; selectedPath?: unknown; agentType?: unknown } | null;
       const mapped = saved.map(file => ({ ...file, language: file.language || languageFor(file.path) }));
-      setFiles(mapped); setSelectedPath(mapped[0]?.path || ''); setContent(mapped[0]?.content || ''); setSavedContent(mapped[0]?.content || '');
+      const restored = Array.isArray(state?.openPaths) ? state.openPaths.filter((path): path is string => typeof path === 'string' && mapped.some(file => file.path === path)) : [];
+      const activePath = typeof state?.selectedPath === 'string' && mapped.some(file => file.path === state.selectedPath) ? state.selectedPath : (restored[0] || mapped[0]?.path || '');
+      const activeFile = mapped.find(file => file.path === activePath);
+      setWorkspaceId(id); setFiles(mapped); setOpenPaths(restored.length ? restored : (activePath ? [activePath] : []));
+      setSelectedPath(activePath); setContent(activeFile?.content || ''); setSavedContent(activeFile?.content || '');
+      if (typeof state?.agentType === 'string') setAgentType(state.agentType);
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load workspace.'); }
     finally { setBusy(false); }
   };
@@ -259,8 +305,8 @@ function App() {
     </header>
     <section className="layout">
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
-      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!workspaceId}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!workspaceId}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); }}><span className="file-dot"/> {file.path}</button><button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button></div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
-      <div className="editor"><div className="tabs"><button className="tab active">{selectedPath || 'No file selected'} {dirty ? '•' : <Check size={12}/>}</button></div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div><div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
+      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!workspaceId}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!workspaceId}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file"><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => openFile(file.path)}><span className="file-dot"/> {file.path}</button><button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button></div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>{panel === 'terminal' ? 'Remote terminal execution is not enabled.' : 'This capability is not connected yet.'}</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
+      <div className="editor"><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div><div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer"><div><b>TERMINAL</b><button onClick={() => setTerminalOpen(false)}><X size={14}/></button></div><code>Remote terminal is disabled until a sandbox runner is configured.</code></div>}</div>
       <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> Cloudflare Workers AI · usage based</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
     {searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}><div><b>Search workspace files</b><button onClick={() => setSearchOpen(false)}><X size={16}/></button></div><input autoFocus value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search file paths…"/><div className="search-results">{files.filter(file => file.path.toLowerCase().includes(searchQuery.toLowerCase())).map(file => <button key={file.path} onClick={() => { if (dirty && !window.confirm('Discard unsaved changes?')) return; setSelectedPath(file.path); setContent(file.content); setSavedContent(file.content); setSearchOpen(false); }}><Code2 size={13}/>{file.path}</button>)}</div><small>Searches the files in the current workspace.</small></div></div>}
