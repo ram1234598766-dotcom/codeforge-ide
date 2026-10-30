@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseWorkspaceRoute, validateWorkspaceSearchQuery } from '../routes';
 describe('parseWorkspaceRoute', () => {
   it('matches a workspace root route for rename and delete', () => {
     expect(parseWorkspaceRoute(`/api/workspaces/${id}`)).toEqual({ workspaceId: id, resource: undefined });
