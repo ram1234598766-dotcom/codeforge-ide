@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build-android-apk:
-    name: Build and sign Android release APK
+    name: Build and verify Android preview APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Expo dependencies
         working-directory: apps/mobile
-        run: npm install --no-audit --no-fund --package-lock=false
+        run: npm install --include=optional --no-audit --no-fund --package-lock=false
 
       - name: Generate native Android project
         working-directory: apps/mobile
@@ -62,45 +62,52 @@ jobs:
           EXPO_NO_TELEMETRY: "1"
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace --refresh-dependencies :app:assembleRelease
 
-      - name: Align, sign, and verify APK
+      - name: Align, sign, and verify preview APK
         shell: bash
         env:
           EXPO_NO_TELEMETRY: "1"
         run: |
           set -euo pipefail
-          APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK_PATH"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$SDK_BUILD_TOOLS/aapt"
+          test -x "$SDK_BUILD_TOOLS/zipalign"
+          test -x "$SDK_BUILD_TOOLS/apksigner"
           mkdir -p release
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" | head -n 5
-          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-unaligned.apk
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" > release/APK-METADATA.txt
+          grep -q "^package: name='com.codeforge.ide'" release/APK-METADATA.txt
+          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-aligned.apk
           STORE_PASSWORD="$(openssl rand -hex 32)"
           KEY_PASSWORD="$(openssl rand -hex 32)"
-          keytool -genkeypair -v -keystore release/codeforge-release.jks \
+          keytool -genkeypair -v -keystore release/codeforge-preview.jks \
             -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \
-            -alias codeforge -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=CodeForge Release,O=CodeForge,C=IN"
+            -alias codeforge-preview -keyalg RSA -keysize 2048 -validity 30 \
+            -dname "CN=CodeForge Preview,O=CodeForge,C=IN"
           export KEYSTORE_PASSWORD="$STORE_PASSWORD"
           export KEY_PASSWORD
           "$SDK_BUILD_TOOLS/apksigner" sign \
-            --ks release/codeforge-release.jks --ks-key-alias codeforge \
+            --ks release/codeforge-preview.jks --ks-key-alias codeforge-preview \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
-            --out release/CodeForge-preview.apk release/CodeForge-unaligned.apk
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
-          sha256sum release/CodeForge.apk > release/SHA256SUMS.txt
+            --out release/CodeForge-preview.apk release/CodeForge-aligned.apk
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge-preview.apk \
+            | tee release/SIGNATURE-VERIFICATION.txt
+          sha256sum release/CodeForge-preview.apk > release/SHA256SUMS.txt
           printf 'COMMIT=%s\n' "$GITHUB_SHA" > release/BUILD-METADATA.txt
           printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
-          printf 'SIGNING=temporary preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
-          rm -f release/CodeForge-unaligned.apk release/codeforge-release.jks
+          printf 'SIGNING=ephemeral preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
+          rm -f release/CodeForge-aligned.apk release/codeforge-preview.jks
 
-      - name: Upload signed APK
+      - name: Upload verified preview APK
         uses: actions/upload-artifact@v4
         with:
-          name: CodeForge-signed-Android-APK-${{ github.sha }}
+          name: CodeForge-preview-Android-APK-${{ github.sha }}
           path: |
-            release/CodeForge.apk
+            release/CodeForge-preview.apk
+            release/APK-METADATA.txt
+            release/SIGNATURE-VERIFICATION.txt
             release/SHA256SUMS.txt
             release/BUILD-METADATA.txt
           if-no-files-found: error
