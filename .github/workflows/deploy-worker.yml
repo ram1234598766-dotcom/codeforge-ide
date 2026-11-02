@@ -22,6 +22,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Verify exact source revision
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -51,6 +55,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      - name: Validate Worker bundle before touching production
+        run: npx --yes wrangler@4 deploy --dry-run
       - name: Configure Worker auth key
         run: printf '%s' "$VITE_SUPABASE_PUBLISHABLE_KEY" | npx --yes wrangler@4 secret put SUPABASE_PUBLISHABLE_KEY
         env:
@@ -72,3 +78,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Probe production Worker and static assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://codeforge-ide.vasudevaya.workers.dev"
+          curl --fail --show-error --silent --retry 5 --retry-all-errors --retry-delay 3 "$BASE_URL/api/health" -o health.json
+          node -e "const h=require('./health.json'); if(h.ok!==true || h.database!=='connected') process.exit(1)"
+          curl --fail --show-error --silent --retry 5 --retry-all-errors --retry-delay 3 "$BASE_URL/api/config" -o /dev/null
+          curl --fail --show-error --silent --retry 5 --retry-all-errors --retry-delay 3 "$BASE_URL/" -o /dev/null
+          curl --fail --show-error --silent --retry 5 --retry-all-errors --retry-delay 3 "$BASE_URL/app" -o /dev/null
+          STATUS="$(curl --silent --output auth-probe.json --write-out '%{http_code}' "$BASE_URL/api/workspaces")"
+          test "$STATUS" = "401"
+          grep -q "Authentication required" auth-probe.json
+          printf 'Production health, config, SPA assets, and unauthenticated API guard passed.\n'
