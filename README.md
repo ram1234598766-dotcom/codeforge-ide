@@ -85,14 +85,26 @@ Workers AI requests are usage-based and may incur Cloudflare charges. Agent resp
 
 ## Public home screen, preview, and native apps
 
-The public home screen at `/` introduces CodeForge, includes an interactive IDE preview, and links to the browser workspace at `/app` plus the Windows and Android release downloads. The browser preview remains the fastest no-install way to try the current product.
+The public home screen at `/` introduces CodeForge, includes an interactive IDE preview, and links to the browser workspace at `/app`. Native download cards remain disabled until a complete Windows + Android release is durably signed and verified. The browser preview remains the available no-install way to try the current product.
 
-- **Desktop:** Tauri 2 Windows app at `apps/desktop`, packaged as a per-user NSIS `.exe` installer.
-- **Android:** Expo / React Native shell at `apps/mobile`, packaged as a signed `.apk`.
+- **Desktop:** Tauri 2 Windows app at `apps/desktop`, built as a per-user NSIS `.exe` installer; production distribution requires a trusted durable Authenticode certificate.
+- **Android:** Expo / React Native shell at `apps/mobile`, built as an `.apk`; production updates require the same durable Android release keystore for every version.
 - **Shared workspace:** all clients use the same hosted Worker, Supabase identity, D1 workspaces, and KV cache. Sign in with the same account on each device to access the same projects.
 - **Independent operation:** each app can be launched and used without another client being open. Internet access is required for authentication, AI services, and cloud synchronization; this release does not claim offline editing or peer-to-peer device sync.
 
-The production installer workflow builds Windows and Android downloads. Version tags (`v*`) publish both assets to GitHub Releases; manual or main-branch builds upload 30-day Actions artifacts. Android production signing requires persistent repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. Never commit the keystore or its passwords.
+The production installer workflow builds Windows and Android artifacts. It signs only with durable production credentials; when either platform's signing configuration is missing, the artifact is marked unsigned and the versioned release workflow skips publication. It never creates a per-build self-signed Windows certificate or one-time Android keystore. No GitHub release is currently published, so the public download cards are intentionally disabled.
+
+Configure these GitHub repository secrets for production signing:
+
+- Windows: `WINDOWS_SIGNING_PFX_BASE64`, `WINDOWS_SIGNING_PFX_PASSWORD`
+- Android: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
+
+Configure these repository variables with the expected certificate fingerprints:
+
+- `WINDOWS_SIGNING_CERT_THUMBPRINT` (SHA-1 certificate thumbprint of the trusted code-signing certificate)
+- `ANDROID_SIGNING_CERT_SHA256` (SHA-256 fingerprint of the Android signing certificate; colons and whitespace are accepted)
+
+The Windows PFX must contain a valid, non-expired CA-trusted Code Signing certificate and private key. The Android keystore and alias must remain stable across releases. Never commit either keystore, PFX, passwords, or private keys. After a release is published and independently verified, update `VERIFIED_RELEASE_TAG` in `apps/web/src/lib/release.ts` through a reviewable pull request; download URLs are pinned to that exact tag, never to an unverified `latest` alias.
 
 Build commands: `pnpm build:desktop` and `pnpm build:mobile`.
 ## Still to build
