@@ -15,14 +15,14 @@ permissions:
 
 concurrency:
   group: codeforge-production-installers-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   windows:
     name: Build Windows desktop installer
     concurrency:
       group: codeforge-windows-build-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -149,7 +149,7 @@ jobs:
     name: Build Android APK
     concurrency:
       group: codeforge-android-build-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
