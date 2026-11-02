@@ -11,7 +11,6 @@ on:
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/codeforge-worker-ci.yml"
       - ".github/workflows/deploy-worker.yml"
-      - ".github/workflows/production-installers.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
       - "scripts/check-release-sequence.mjs"
@@ -26,7 +25,6 @@ on:
       - ".github/workflows/android-apk.yml"
       - ".github/workflows/codeforge-worker-ci.yml"
       - ".github/workflows/deploy-worker.yml"
-      - ".github/workflows/production-installers.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
       - "scripts/check-release-sequence.mjs"
@@ -40,10 +38,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify exact source revision
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_SHA: ref: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v4
         with:

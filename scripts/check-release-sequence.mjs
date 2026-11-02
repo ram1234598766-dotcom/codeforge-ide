@@ -37,7 +37,7 @@ export function shouldPublishRelease(candidateRunNumber, releases) {
   return candidate > latestPublishedRunNumber(releases);
 }
 
-async function fetchPublishedReleases(env) {
+export async function fetchPublishedReleases(env, fetchImpl = fetch) {
   const repository = env.GITHUB_REPOSITORY;
   const token = env.GH_TOKEN || env.GITHUB_TOKEN;
   const apiBase = (env.GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, '');
@@ -50,7 +50,7 @@ async function fetchPublishedReleases(env) {
   const releases = [];
   for (let page = 1; page <= 100; page += 1) {
     const url = apiBase + '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(name) + '/releases?per_page=100&page=' + page;
-    const response = await fetch(url, {
+    const response = await fetchImpl(url, {
       headers: {
         accept: 'application/vnd.github+json',
         authorization: 'Bearer ' + token,
@@ -70,9 +70,9 @@ async function fetchPublishedReleases(env) {
   throw new Error('More than 10,000 releases found; refusing to publish without a complete sequence check.');
 }
 
-export async function main(env = process.env) {
+export async function main(env = process.env, fetchImpl = fetch) {
   const candidate = env.CANDIDATE_RUN_NUMBER;
-  const releases = await fetchPublishedReleases(env);
+  const releases = await fetchPublishedReleases(env, fetchImpl);
   const latest = latestPublishedRunNumber(releases);
   const ready = shouldPublishRelease(candidate, releases);
   const output = 'release_ready=' + (ready ? 'true' : 'false') + '\n'

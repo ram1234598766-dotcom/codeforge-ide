@@ -11,8 +11,7 @@ const workerCI = read('../.github/workflows/codeforge-worker-ci.yml');
 const releasePolicy = read('../.github/workflows/release-policy.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const deploy = read('../.github/workflows/deploy-worker.yml');
-const installersWorkflow = read('../.github/workflows/production-installers.yml');
-const release = read('../.github/workflows/publish-versioned-release.yml');
+const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
 
@@ -32,17 +31,36 @@ assert.ok(native.includes("adb uninstall com.codeforge.ide"));
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
-assert.match(release, /WINDOWS_SIGNING.*!= "durable"/);
-assert.match(release, /ANDROID_SIGNING.*!= "durable"/);
-assert.match(release, /sha256sum -c/);
-assert.match(release, /osslsigncode verify/);
-assert.match(release, /apksigner.*verify/);
-assert.match(release, /draft: true/);
-assert.match(release, /make_latest: true/);
-assert.match(release, /Prevent out-of-order release publication/);
-assert.match(release, /check-release-sequence\.mjs/);
-assert.match(release, /steps\.sequence\.outputs\.release_ready == 'true'/);
-assert.match(release, /actions\/checkout@v4/);
+assert.match(publisher, /WINDOWS_SIGNING.*!= "durable"/);
+assert.match(publisher, /ANDROID_SIGNING.*!= "durable"/);
+assert.match(publisher, /sha256sum -c/);
+assert.match(publisher, /osslsigncode verify/);
+assert.match(publisher, /apksigner.*verify/);
+assert.match(publisher, /draft: true/);
+assert.match(publisher, /make_latest: true/);
+assert.match(publisher, /Prevent out-of-order release publication/);
+assert.match(publisher, /check-release-sequence\.mjs/);
+assert.match(publisher, /steps\.sequence\.outputs\.release_ready == 'true'/);
+
+const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
+for (const [name, workflow] of [
+  ['Worker CI', workerCI],
+  ['Native shells CI', native],
+  ['Release policy', releasePolicy],
+  ['Android preview', androidPreview],
+]) {
+  assert.ok(workflow.includes(expectedPrRef), name + ' must check out the exact PR head SHA.');
+  assert.match(workflow, /Verify exact source revision/, name + ' must assert the checked-out SHA.');
+}
+assert.equal((native.match(/Verify exact source revision/g) || []).length, 4);
+assert.ok(deploy.includes('EXPECTED_SHA: ${{ github.sha }}'));
+assert.ok(installers.includes('EXPECTED_SHA: ${{ github.sha }}'));
+assert.ok(publisher.includes('EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}'));
+assert.ok(deploy.includes('wrangler@4 deploy --dry-run'));
+assert.ok(deploy.includes('$BASE_URL/api/health'));
+assert.ok(deploy.includes('$BASE_URL/api/config'));
+assert.ok(deploy.includes('$BASE_URL/api/workspaces'));
+assert.match(deploy, /Probe production Worker and static assets/);
 
 const releaseSequenceFixtures = [
   { tag_name: 'v1.0.3', draft: false },
@@ -101,58 +119,10 @@ try {
   rmSync(testDirectory, { recursive: true, force: true });
 }
 
-assert.match(release, /gh release download/);
-const exactPrRef = /ref: ${'\\
+assert.match(publisher, /gh release download/);
 assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
 assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
 assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
 assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
 
-console.log('Release signing gates and public download state are fail-closed.');
-}\\{\\{ github\\.event\\.pull_request\\.head\\.sha \\|\\| github\\.sha \\}\\}/;
-for (const [name, workflow] of [
-  ['Worker CI', workerCI],
-  ['Native shells CI', native],
-  ['Release policy', releasePolicy],
-  ['Android preview', androidPreview],
-]) {
-  assert.match(workflow, exactPrRef, name + ' must check out the exact PR head SHA.');
-  assert.match(workflow, /Verify exact source revision/, name + ' must assert the checked-out SHA.');
-}
-assert.equal((native.match(/Verify exact source revision/g) || []).length, 4);
-assert.match(deploy, /EXPECTED_SHA: ${'\\
-assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
-assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
-
-console.log('Release signing gates and public download state are fail-closed.');
-}\\{\\{ github\\.sha \\}\\}/);
-assert.match(installersWorkflow, /EXPECTED_SHA: ${'\\
-assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
-assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
-
-console.log('Release signing gates and public download state are fail-closed.');
-}\\{\\{ github\\.sha \\}\\}/);
-assert.match(release, /EXPECTED_SHA: ${'\\
-assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
-assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
-
-console.log('Release signing gates and public download state are fail-closed.');
-}\\{\\{ github\\.event\\.workflow_run\\.head_sha \\}\\}/);
-assert.match(deploy, /wrangler@4 deploy --dry-run/);
-assert.match(deploy, /api\\/health/);
-assert.match(deploy, /api\\/config/);
-assert.match(deploy, /api\\/workspaces/);
-assert.match(deploy, /production Worker and static assets/);
-
-assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
-assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
-assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
-
-console.log('Release signing gates and public download state are fail-closed.');
+console.log('Release signing gates, exact-SHA checks, production probes, and sequence policy passed.');
