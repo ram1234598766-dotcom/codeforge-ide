@@ -151,13 +151,13 @@ jobs:
           "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows-CI.txt -Encoding ascii -NoNewline
           $install = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -PassThru -Wait
           if ($install.ExitCode -ne 0) { throw "Silent NSIS install failed with exit code $($install.ExitCode)." }
-          $installed = Get-ChildItem "$env:LOCALAPPDATA" -Filter "CodeForge.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $installed) { throw "CodeForge.exe was not found after silent installation." }
+          $installed = Get-ChildItem "$env:LOCALAPPDATA" -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("codeforge-desktop.exe", "CodeForge.exe") } | Select-Object -First 1
+          if (-not $installed) { throw "The Tauri main binary was not found after silent installation." }
           $uninstaller = Get-ChildItem $installed.Directory.FullName -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("uninstall.exe", "unins000.exe") } | Select-Object -First 1
           if (-not $uninstaller) { throw "The installed application did not contain a discoverable NSIS uninstaller." }
           $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
           if ($uninstall.ExitCode -ne 0) { throw "Silent NSIS uninstall failed with exit code $($uninstall.ExitCode)." }
-          if (Test-Path $installed.FullName) { throw "CodeForge.exe remained after uninstall smoke test." }
+          if (Test-Path $installed.FullName) { throw "The Tauri main binary remained after uninstall smoke test." }
           "Windows NSIS install/uninstall smoke test passed. SHA-256: $hash" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
