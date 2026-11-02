@@ -33,6 +33,7 @@ jobs:
         with:
           node-version: 22
       - name: Parse GitHub Actions workflow YAML
-        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
+        run: |
+          ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs
