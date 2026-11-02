@@ -17,7 +17,7 @@ assert.match(native, /Get-AuthenticodeSignature/);
 assert.match(native, /Silent NSIS install failed/);
 assert.match(native, /Silent NSIS uninstall failed/);
 assert.match(native, /android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
-assert.match(native, /adb install -r release\\/CodeForge-debug\\.apk/);
+assert.match(native, /adb install -r release\/CodeForge-debug\.apk/);
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
