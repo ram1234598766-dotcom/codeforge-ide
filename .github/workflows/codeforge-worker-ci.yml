@@ -25,8 +25,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      - name: Regenerate the stale web dependency lockfile
+        run: rm -f apps/web/package-lock.json
       - name: Install web dependencies
         run: npm --prefix apps/web install --no-audit --no-fund
+      - name: Upload refreshed web dependency lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeforge-web-dependency-lockfile
+          path: apps/web/package-lock.json
+          if-no-files-found: error
+          retention-days: 1
       - name: Dependency security audit
         run: npm --prefix apps/web audit --audit-level=high
       - name: Unit and regression tests
