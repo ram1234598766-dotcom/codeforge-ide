@@ -10,6 +10,10 @@ permissions:
   actions: read
   contents: write
 
+concurrency:
+  group: codeforge-release-publisher
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Verify durable installers and publish unique version
