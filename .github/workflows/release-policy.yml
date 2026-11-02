@@ -6,6 +6,7 @@ on:
       - "apps/web/src/main.tsx"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
+      - ".github/workflows/native-shells-ci.yml"
       - ".github/workflows/publish-versioned-release.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
