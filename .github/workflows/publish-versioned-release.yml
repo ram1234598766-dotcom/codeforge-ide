@@ -35,16 +35,6 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Install Android verification tools
-        uses: android-actions/setup-android@v4
-        with:
-          packages: "platform-tools build-tools;36.0.0"
-
-      - name: Install Authenticode verification tool
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y osslsigncode
-
       - name: Check durable signing eligibility
         id: eligibility
         shell: bash
@@ -79,6 +69,18 @@ jobs:
             exit 0
           fi
           echo "release_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install Android verification tools
+        if: steps.eligibility.outputs.release_ready == 'true'
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools build-tools;36.0.0"
+
+      - name: Install Authenticode verification tool
+        if: steps.eligibility.outputs.release_ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osslsigncode
 
       - name: Verify checksums, signer identities, and build provenance
         if: steps.eligibility.outputs.release_ready == 'true'
