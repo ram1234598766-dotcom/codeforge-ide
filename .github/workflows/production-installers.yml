@@ -200,8 +200,19 @@ jobs:
       - name: Assemble release APK
         working-directory: apps/mobile/android
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+          for attempt in 1 2 3; do
+            echo "Gradle production build attempt $attempt/3"
+            if ./gradlew --no-daemon --stacktrace --refresh-dependencies :app:assembleRelease; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "::error::Android production build failed after three logged attempts."
+              exit 1
+            fi
+            sleep "$((attempt * 10))"
+          done
       - name: Align APK and record package metadata
         shell: bash
         run: |
