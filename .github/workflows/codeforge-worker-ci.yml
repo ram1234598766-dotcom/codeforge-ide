@@ -25,17 +25,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - name: Regenerate the stale web dependency lockfile
-        run: rm -f apps/web/package-lock.json
-      - name: Install web dependencies
-        run: npm --prefix apps/web install --no-audit --no-fund
-      - name: Upload refreshed web dependency lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: codeforge-web-dependency-lockfile
-          path: apps/web/package-lock.json
-          if-no-files-found: error
-          retention-days: 1
+      - name: Install locked web dependencies
+        run: npm --prefix apps/web ci --no-audit --no-fund
       - name: Dependency security audit
         run: npm --prefix apps/web audit --audit-level=high
       - name: Unit and regression tests
@@ -46,31 +37,3 @@ jobs:
         run: npm --prefix apps/web run build
       - name: Validate Worker configuration and bundle
         run: npx --yes wrangler@4 deploy --dry-run
-  persist-lockfile:
-    name: Commit refreshed web dependency lockfile
-    needs: build
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/durable-native-release-gates'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: codeforge-web-dependency-lockfile
-          path: apps/web
-      - name: Commit reviewed lockfile update to the PR branch
-        env:
-          GITHUB_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/web/package-lock.json
-          if git diff --cached --quiet; then
-            echo 'Dependency lockfile is already current.'
-            exit 0
-          fi
-          git commit -m 'chore: refresh web dependency lockfile'
-          git push origin "HEAD:${GITHUB_HEAD_REF}"
