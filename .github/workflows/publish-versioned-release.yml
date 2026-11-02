@@ -21,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -131,8 +137,16 @@ jobs:
             printf '## Build provenance\n- Commit: %s\n- Installer workflow run: %s\n- Version code: %s\n' "$SOURCE_SHA" "$UPSTREAM_RUN_ID" "${{ github.event.workflow_run.run_number }}"
           } > release/RELEASE-NOTES.md
 
-      - name: Create verified draft release with all assets
+      - name: Prevent out-of-order release publication
+        id: sequence
         if: steps.eligibility.outputs.release_ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: node scripts/check-release-sequence.mjs
+
+      - name: Create verified draft release with all assets
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.event.workflow_run.run_number }}
@@ -158,7 +172,7 @@ jobs:
             release/RELEASE-NOTES.md
 
       - name: Publish the verified release
-        if: steps.eligibility.outputs.release_ready == 'true'
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.event.workflow_run.run_number }}
@@ -169,7 +183,7 @@ jobs:
           body_path: release/RELEASE-NOTES.md
 
       - name: Verify published release assets and downloads
-        if: steps.eligibility.outputs.release_ready == 'true'
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

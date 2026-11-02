@@ -10,6 +10,7 @@ on:
       - ".github/workflows/publish-versioned-release.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/check-release-sequence.mjs"
   push:
     branches: [main]
     paths:
@@ -20,6 +21,7 @@ on:
       - ".github/workflows/publish-versioned-release.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/check-release-sequence.mjs"
 
 permissions:
   contents: read

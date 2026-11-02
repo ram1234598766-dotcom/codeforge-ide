@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { latestPublishedRunNumber, shouldPublishRelease } from './check-release-sequence.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
@@ -31,6 +32,24 @@ assert.match(release, /osslsigncode verify/);
 assert.match(release, /apksigner.*verify/);
 assert.match(release, /draft: true/);
 assert.match(release, /make_latest: true/);
+assert.match(release, /Prevent out-of-order release publication/);
+assert.match(release, /check-release-sequence\\.mjs/);
+assert.match(release, /steps\\.sequence\\.outputs\\.release_ready == 'true'/);
+assert.match(release, /actions\\/checkout@v4/);
+
+const releaseSequenceFixtures = [
+  { tag_name: 'v1.0.3', draft: false },
+  { tag_name: 'v1.0.12', draft: false },
+  { tag_name: 'v1.0.99', draft: true },
+  { tag_name: 'v2.0.0', draft: false },
+  { tag_name: 'latest', draft: false },
+];
+assert.equal(latestPublishedRunNumber(releaseSequenceFixtures), 12);
+assert.equal(shouldPublishRelease(13, releaseSequenceFixtures), true);
+assert.equal(shouldPublishRelease(12, releaseSequenceFixtures), false);
+assert.equal(shouldPublishRelease(11, releaseSequenceFixtures), false);
+assert.equal(shouldPublishRelease(1, []), true);
+assert.throws(() => shouldPublishRelease(0, releaseSequenceFixtures), /positive safe integer/);
 assert.match(release, /gh release download/);
 assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
 assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
