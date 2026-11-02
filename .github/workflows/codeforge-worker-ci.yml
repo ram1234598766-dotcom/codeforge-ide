@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Verify release signing gates and public download state
+        run: node scripts/verify-release-pipeline.mjs
       - name: Install web dependencies
         run: npm --prefix apps/web install --no-audit --no-fund
       - name: Unit tests
