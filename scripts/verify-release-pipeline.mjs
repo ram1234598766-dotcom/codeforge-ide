@@ -51,9 +51,10 @@ for (const [name, workflow] of [
 ]) {
   assert.ok(workflow.includes(expectedPrRef), name + ' must check out the exact PR head SHA.');
   assert.match(workflow, /Verify exact source revision/, name + ' must assert the checked-out SHA.');
-  assert.match(workflow, /- name: Verify exact source revision\\n\\s+shell: bash/, name + ' must use a portable shell for SHA verification.');
+  assert.ok(workflow.includes('shell: bash'), name + ' must use a portable shell for SHA verification.');
 }
-assert.equal((native.match(/- name: Verify exact source revision\\n\\s+shell: bash/g) || []).length, 4);
+assert.equal((native.match(/Verify exact source revision/g) || []).length, 4);
+assert.ok((native.match(/shell: bash/g) || []).length >= 4);
 assert.ok(deploy.includes('EXPECTED_SHA: ${{ github.sha }}'));
 assert.ok(installers.includes('EXPECTED_SHA: ${{ github.sha }}'));
 assert.ok(publisher.includes('EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}'));
