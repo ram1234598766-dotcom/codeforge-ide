@@ -18,6 +18,28 @@ assert.match(native, /Silent NSIS install failed/);
 assert.match(native, /Silent NSIS uninstall failed/);
 assert.match(native, /android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
 assert.match(native, /adb install -r release\/CodeForge-debug\.apk/);
+assert.ok(native.includes("grep -q '^package:com.codeforge.ide
+assert.match(native, /Gradle native build attempt/);
+assert.match(native, /workflow-lint/);
+assert.match(installers, /Gradle production build attempt/);
+assert.match(release, /WINDOWS_SIGNING.*!= "durable"/);
+assert.match(release, /ANDROID_SIGNING.*!= "durable"/);
+assert.match(release, /sha256sum -c/);
+assert.match(release, /osslsigncode verify/);
+assert.match(release, /apksigner.*verify/);
+assert.match(release, /draft: true/);
+assert.match(release, /make_latest: true/);
+assert.match(release, /gh release download/);
+assert.match(releaseSource, /VERIFIED_RELEASE_TAG: string \| null = null/);
+assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
+assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
+assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
+
+console.log('Release signing gates and public download state are fail-closed.');
+; then"));
+assert.ok(native.includes('codeforge-desktop.exe'));
+assert.ok(native.includes('adb uninstall com.codeforge.ide'));
+assert.doesNotMatch(native, /\n; then/);
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
