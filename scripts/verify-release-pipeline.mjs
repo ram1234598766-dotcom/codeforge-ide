@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
+const native = read('../.github/workflows/native-shells-ci.yml');
 const release = read('../.github/workflows/publish-versioned-release.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
@@ -11,6 +12,10 @@ assert.match(installers, /WINDOWS_SIGNING_PFX_BASE64/);
 assert.match(installers, /ANDROID_KEYSTORE_BASE64/);
 assert.doesNotMatch(installers, /New-SelfSignedCertificate|keytool -genkeypair|codeforge-build-only|softprops\/action-gh-release/);
 assert.match(installers, /SIGNING=unsigned/);
+assert.match(native, /Build and install-smoke Windows NSIS installer/);
+assert.match(native, /Get-AuthenticodeSignature/);
+assert.match(native, /Silent NSIS install failed/);
+assert.match(native, /Silent NSIS uninstall failed/);
 assert.match(release, /WINDOWS_SIGNING.*!= "durable"/);
 assert.match(release, /ANDROID_SIGNING.*!= "durable"/);
 assert.match(release, /sha256sum -c/);
