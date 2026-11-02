@@ -28,6 +28,7 @@ jobs:
         with:
           node-version: 22
       - name: Verify exact source revision
+        shell: bash
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
