@@ -14,12 +14,12 @@ export function latestPublishedRunNumber(releases) {
       : typeof release.tagName === 'string'
         ? release.tagName
         : '';
-    const match = /^v1\\.0\\.(0|[1-9]\\d*)$/.exec(tag);
+    const match = /^v1\.0\.(0|[1-9]\d*)$/.exec(tag);
     if (!match) continue;
 
     const runNumber = Number(match[1]);
     if (!Number.isSafeInteger(runNumber)) {
-      throw new Error(`Published release tag has an unsafe run number: ${tag}`);
+      throw new Error('Published release tag has an unsafe run number: ' + tag);
     }
     latest = Math.max(latest, runNumber);
   }
@@ -40,8 +40,8 @@ export function shouldPublishRelease(candidateRunNumber, releases) {
 async function fetchPublishedReleases(env) {
   const repository = env.GITHUB_REPOSITORY;
   const token = env.GH_TOKEN || env.GITHUB_TOKEN;
-  const apiBase = (env.GITHUB_API_URL || 'https://api.github.com').replace(/\\/$/, '');
-  if (!repository || !/^[^/]+\\/[^/]+$/.test(repository)) {
+  const apiBase = (env.GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, '');
+  if (!repository || !/^[^/]+\/[^/]+$/.test(repository)) {
     throw new Error('GITHUB_REPOSITORY must be set to owner/name.');
   }
   if (!token) throw new Error('A GitHub token is required to inspect published releases.');
@@ -49,16 +49,16 @@ async function fetchPublishedReleases(env) {
   const [owner, name] = repository.split('/');
   const releases = [];
   for (let page = 1; page <= 100; page += 1) {
-    const url = `${apiBase}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases?per_page=100&page=${page}`;
+    const url = apiBase + '/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(name) + '/releases?per_page=100&page=' + page;
     const response = await fetch(url, {
       headers: {
         accept: 'application/vnd.github+json',
-        authorization: `Bearer ${token}`,
+        authorization: 'Bearer ' + token,
         'x-github-api-version': '2022-11-28',
       },
     });
     if (!response.ok) {
-      throw new Error(`GitHub releases API returned HTTP ${response.status}; refusing to publish without a sequence check.`);
+      throw new Error('GitHub releases API returned HTTP ' + response.status + '; refusing to publish without a sequence check.');
     }
 
     const batch = await response.json();
@@ -75,14 +75,15 @@ export async function main(env = process.env) {
   const releases = await fetchPublishedReleases(env);
   const latest = latestPublishedRunNumber(releases);
   const ready = shouldPublishRelease(candidate, releases);
-  const output = `release_ready=${ready ? 'true' : 'false'}\\nlatest_published_run_number=${latest}\\n`;
+  const output = 'release_ready=' + (ready ? 'true' : 'false') + '\n'
+    + 'latest_published_run_number=' + latest + '\n';
 
   if (!env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT is required to record the release-sequence decision.');
   appendFileSync(env.GITHUB_OUTPUT, output);
 
   const summary = ready
-    ? `Release sequence check passed: candidate v1.0.${candidate} is newer than the latest published v1.0.${latest}.\\n`
-    : `Release skipped: candidate v1.0.${candidate} is not newer than the latest published v1.0.${latest}; this prevents an older workflow run from moving the latest release backwards.\\n`;
+    ? 'Release sequence check passed: candidate v1.0.' + candidate + ' is newer than the latest published v1.0.' + latest + '.\n'
+    : 'Release skipped: candidate v1.0.' + candidate + ' is not newer than the latest published v1.0.' + latest + '; this prevents an older workflow run from moving the latest release backwards.\n';
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, summary);
   console.log(summary.trim());
   return { ready, latest };

@@ -33,9 +33,9 @@ assert.match(release, /apksigner.*verify/);
 assert.match(release, /draft: true/);
 assert.match(release, /make_latest: true/);
 assert.match(release, /Prevent out-of-order release publication/);
-assert.match(release, /check-release-sequence\\.mjs/);
-assert.match(release, /steps\\.sequence\\.outputs\\.release_ready == 'true'/);
-assert.match(release, /actions\\/checkout@v4/);
+assert.match(release, /check-release-sequence\.mjs/);
+assert.match(release, /steps\.sequence\.outputs\.release_ready == 'true'/);
+assert.match(release, /actions\/checkout@v4/);
 
 const releaseSequenceFixtures = [
   { tag_name: 'v1.0.3', draft: false },
