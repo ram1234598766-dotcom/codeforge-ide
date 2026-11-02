@@ -1,5 +1,8 @@
 name: Native shells CI
 
+permissions:
+  contents: read
+
 concurrency:
   group: native-shells-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -44,3 +47,51 @@ jobs:
         run: npm --prefix apps/desktop install --no-audit --no-fund
       - name: Build Tauri desktop shell
         run: npm --prefix apps/desktop run build
+  windows:
+    name: Build and install-smoke Windows NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm install --no-audit --no-fund
+      - name: Generate platform icons
+        working-directory: apps/desktop
+        run: npx tauri icon src-tauri/icons/icon.png
+      - name: Build Windows NSIS installer
+        working-directory: apps/desktop
+        run: npx tauri build --bundles nsis
+      - name: Install, verify, and uninstall on the disposable runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*.exe | Sort-Object FullName | Select-Object -First 1
+          if (-not $installer -or $installer.Length -le 0) { throw "Tauri did not produce a non-empty Windows installer." }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne "NotSigned") { throw "Build-only Windows CI expected an unsigned artifact; got $($signature.Status)." }
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item $installer.FullName release/CodeForge-Setup-Windows.exe
+          $hash = (Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows-CI.txt -Encoding ascii -NoNewline
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Silent NSIS install failed with exit code $($install.ExitCode)." }
+          $installed = Get-ChildItem "$env:LOCALAPPDATA" -Filter "CodeForge.exe" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $installed) { throw "CodeForge.exe was not found after silent installation." }
+          $uninstaller = Get-ChildItem $installed.Directory.FullName -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("uninstall.exe", "unins000.exe") } | Select-Object -First 1
+          if (-not $uninstaller) { throw "The installed application did not contain a discoverable NSIS uninstaller." }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "Silent NSIS uninstall failed with exit code $($uninstall.ExitCode)." }
+          if (Test-Path $installed.FullName) { throw "CodeForge.exe remained after uninstall smoke test." }
+          "Windows NSIS install/uninstall smoke test passed. SHA-256: $hash" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codeforge-windows-ci-installer
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
