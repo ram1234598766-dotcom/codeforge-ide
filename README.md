@@ -104,7 +104,18 @@ The Windows workflow uploads the unsigned installer as a GitHub Actions artifact
 
 For Android, configure secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and variable `ANDROID_SIGNING_CERT_SHA256`. Keep the original keystore and passwords backed up securely and stable across releases. Never commit signing credentials. After a release is published and independently verified, update `VERIFIED_RELEASE_TAG` in `apps/web/src/lib/release.ts` through a reviewable pull request; download URLs are pinned to that exact tag, never to an unverified `latest` alias.
 
-See [SignPath Foundation onboarding and eligibility](docs/signpath-foundation-onboarding.md) before applying. CodeForge is not yet approved by SignPath Foundation; do not describe current installers as Foundation-signed.
+## Licensing and code-signing review drafts
+
+The candidate `LICENSE` contains Apache License 2.0 text for review only; it is not an effective grant until the rights holder confirms ownership and the change is approved and merged. It applies only to original CodeForge material that the licensor is authorized to license. Third-party components retain their own licenses.
+
+- [Apache-2.0 license candidate](LICENSE)
+- [Ownership and compatibility review](docs/LICENSE-OWNERSHIP-REVIEW.md)
+- [Third-party dependency notices and audit snapshot](THIRD_PARTY_NOTICES.md)
+- [Code signing policy draft](docs/CODE-SIGNING-POLICY.md)
+- [Privacy policy working draft](docs/PRIVACY-POLICY-DRAFT.md)
+- [SignPath Foundation onboarding and eligibility](docs/signpath-foundation-onboarding.md)
+
+CodeForge is not approved or enrolled with SignPath Foundation. The privacy policy, installer disclosure/choice requirements, contributor roles/MFA, prior unsigned Windows release, and the CC-BY-4.0 build-data dependency still require review. Do not describe current installers as Foundation-signed.
 
 Build commands: `pnpm build:desktop` and `pnpm build:mobile`.
 ## Still to build
