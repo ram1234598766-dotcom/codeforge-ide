@@ -39,6 +39,12 @@ assert.match(installers, /Get-AuthenticodeSignature release\/CodeForge-Setup-Win
 assert.match(installers, /SIGNING=unsigned/);
 assert.doesNotMatch(installers, /WINDOWS_SIGNING_PFX_BASE64|New-SelfSignedCertificate/);
 assert.match(installers, /ANDROID_KEYSTORE_BASE64/);
+assert.match(installers, /id: android-signing-run/);
+assert.match(installers, /continue-on-error: true/);
+assert.match(installers, /steps\.android-signing-run\.outcome != 'success'/);
+assert.match(installers, /Android keystore certificate SHA-256/);
+assert.match(installers, /--key-pass env:ANDROID_KEY_PASSWORD/);
+assert.match(installers, /--key-pass env:ANDROID_KEYSTORE_PASSWORD/);
 assert.doesNotMatch(installers, /New-SelfSignedCertificate|keytool -genkeypair|codeforge-build-only|softprops\/action-gh-release/);
 assert.match(installers, /SIGNING=unsigned/);
 assert.match(native, /Build and install-smoke Windows NSIS installer/);

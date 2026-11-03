@@ -256,7 +256,9 @@ jobs:
           grep -q "^package: name='com.codeforge.ide'" release/APK-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/CodeForge-aligned.apk"
       - name: Sign APK with durable production keystore
+        id: android-signing-run
         if: steps.android-signing.outputs.configured == 'true'
+        continue-on-error: true
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -268,24 +270,65 @@ jobs:
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/codeforge-production-release.jks"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
-          keytool -list -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null
+          if ! keytool -list -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::The Android keystore could not be opened with ANDROID_KEYSTORE_PASSWORD or the configured alias is missing."
+            exit 1
+          fi
           EXPECTED_CERT="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
-          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" | sha256sum | awk '{print toupper($1)}')"
-          test "$ACTUAL_KEYSTORE_CERT" = "$EXPECTED_CERT"
+          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | sha256sum | awk '{print toupper($1)}')"
+          echo "Android keystore certificate SHA-256: $ACTUAL_KEYSTORE_CERT"
+          if [[ ! "$EXPECTED_CERT" =~ ^[A-F0-9]{64}$ ]]; then
+            echo "::error::ANDROID_SIGNING_CERT_SHA256 must contain exactly 64 hexadecimal characters."
+            exit 1
+          fi
+          if [[ "$ACTUAL_KEYSTORE_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::ANDROID_SIGNING_CERT_SHA256 does not match the certificate inside ANDROID_KEYSTORE_BASE64. Update the repository variable only after confirming this is the intended production signing key."
+            exit 1
+          fi
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$SDK_BUILD_TOOLS/apksigner" sign             --ks "$KEYSTORE"             --ks-key-alias "$ANDROID_KEY_ALIAS"             --ks-pass env:ANDROID_KEYSTORE_PASSWORD             --key-pass env:ANDROID_KEY_PASSWORD             --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt
+          if ! "$SDK_BUILD_TOOLS/apksigner" sign --verbose \
+            --ks "$KEYSTORE" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"; then
+            echo "::warning::ANDROID_KEY_PASSWORD did not unlock the signing key; retrying with the keystore password for single-password keystore formats."
+            rm -f release/CodeForge.apk
+            "$SDK_BUILD_TOOLS/apksigner" sign --verbose \
+              --ks "$KEYSTORE" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"
+          fi
+          if ! "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt; then
+            echo "::error::Android APK signature verification failed."
+            exit 1
+          fi
           ACTUAL_SIGNER_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/ANDROID-SIGNING-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
-          test "$ACTUAL_SIGNER_CERT" = "$EXPECTED_CERT"
+          if [[ -z "$ACTUAL_SIGNER_CERT" || "$ACTUAL_SIGNER_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::The signed APK certificate does not match the configured production fingerprint."
+            exit 1
+          fi
           printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" > release/ANDROID-SIGNING-METADATA.txt
           rm -f "$KEYSTORE"
       - name: Stage unsigned APK when durable signing is unavailable
-        if: steps.android-signing.outputs.configured != 'true'
+        if: steps.android-signing.outputs.configured != 'true' || steps.android-signing-run.outcome != 'success'
         shell: bash
         run: |
           set -euo pipefail
           cp "$RUNNER_TEMP/CodeForge-aligned.apk" release/CodeForge.apk
           printf 'SIGNING=unsigned\nSIGNATURE_STATUS=not-signed\n' > release/ANDROID-SIGNING-METADATA.txt
+          if [[ "${{ steps.android-signing.outputs.configured }}" == "true" ]]; then
+            echo "Durable signing was attempted but failed validation. The artifact is retained as unsigned; public release remains blocked."
+          else
+            echo "Durable Android signing is not configured. The artifact is retained as unsigned; public release remains blocked."
+          fi
+          {
+            echo "## Android signing status"
+            echo
+            echo "The APK was built, but it is not marked as a production-signed artifact. The versioned release publisher will not publish it."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Record Android build metadata and checksum
         shell: bash
         env:
