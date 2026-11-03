@@ -78,35 +78,43 @@ jobs:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          test -n "$APK_PATH"
+          APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -s "$APK_PATH"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for tool in aapt zipalign apksigner; do
+            if [[ ! -x "$SDK_BUILD_TOOLS/$tool" ]]; then
+              echo "::error::Required Android build tool is missing or not executable: $tool"
+              exit 1
+            fi
+          done
           mkdir -p release
           SOURCE_SHA="$(git rev-parse HEAD)"
           test "$SOURCE_SHA" = "$EXPECTED_SHA"
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" > release/APK-METADATA.txt
-          head -n 5 release/APK-METADATA.txt
-          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-unaligned.apk
+          grep -q "^package: name='com.codeforge.ide'" release/APK-METADATA.txt
+          "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-aligned.apk
+          "$SDK_BUILD_TOOLS/zipalign" -c 4 release/CodeForge-aligned.apk
           KEYSTORE_PATH="release/codeforge-preview.jks"
           STORE_PASSWORD="$(openssl rand -hex 32)"
           KEY_PASSWORD="$(openssl rand -hex 32)"
-          trap 'rm -f "$KEYSTORE_PATH" release/CodeForge-unaligned.apk' EXIT
+          trap 'rm -f "$KEYSTORE_PATH" release/CodeForge-aligned.apk' EXIT
           keytool -genkeypair -v -storetype JKS -keystore "$KEYSTORE_PATH" \
             -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" \
-            -alias codeforge -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias codeforge-preview -keyalg RSA -keysize 2048 -validity 30 \
             -dname "CN=CodeForge Preview,O=CodeForge,C=IN"
           export KEYSTORE_PASSWORD="$STORE_PASSWORD"
           export KEY_PASSWORD
           "$SDK_BUILD_TOOLS/apksigner" sign \
-            --ks "$KEYSTORE_PATH" --ks-key-alias codeforge \
+            --ks "$KEYSTORE_PATH" --ks-key-alias codeforge-preview \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
-            --out release/CodeForge.apk release/CodeForge-unaligned.apk
+            --out release/CodeForge.apk release/CodeForge-aligned.apk
+          test -s release/CodeForge.apk
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt
           sha256sum release/CodeForge.apk > release/SHA256SUMS.txt
           printf 'COMMIT=%s\n' "$SOURCE_SHA" > release/BUILD-METADATA.txt
           printf 'WORKFLOW_RUN_ID=%s\n' "$GITHUB_RUN_ID" >> release/BUILD-METADATA.txt
           printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
-          printf 'SIGNING=temporary preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
+          printf 'SIGNING=ephemeral preview key valid for 30 days; not suitable for production updates\n' >> release/BUILD-METADATA.txt
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
