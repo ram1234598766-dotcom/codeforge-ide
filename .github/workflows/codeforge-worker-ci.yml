@@ -1,5 +1,8 @@
 name: CodeForge Worker CI
 
+permissions:
+  contents: read
+
 concurrency:
   group: codeforge-worker-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -14,18 +17,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install web dependencies
-        run: npm --prefix apps/web install --no-audit --no-fund
-      - name: Unit tests
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install locked web dependencies
+        run: npm --prefix apps/web ci --no-audit --no-fund
+      - name: Dependency security audit
+        run: npm --prefix apps/web audit --audit-level=high
+      - name: Unit and regression tests
         run: npm --prefix apps/web test
       - name: Type-check
         run: npm --prefix apps/web run typecheck
-      - name: Build
+      - name: Production build
         run: npm --prefix apps/web run build
       - name: Validate Worker configuration and bundle
-        run: npx --yes wrangler@4 deploy --dry-run
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npx --yes wrangler@4 deploy --dry-run --message "CodeForge commit $EXPECTED_SHA"

@@ -10,13 +10,28 @@ permissions:
   actions: read
   contents: write
 
+concurrency:
+  group: codeforge-release-publisher
+  cancel-in-progress: false
+
 jobs:
   publish:
-    name: Verify installers and publish unique version
+    name: Verify durable installers and publish unique version
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -35,47 +50,172 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
 
+      - name: Check durable signing eligibility
+        id: eligibility
+        shell: bash
+        env:
+          WINDOWS_SIGNING_CERT_THUMBPRINT: ${{ vars.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -s release/windows/CodeForge-Setup-Windows.exe
+          test -s release/windows/SHA256-Windows.txt
+          test -s release/windows/WINDOWS-SIGNING-METADATA.txt
+          test -s release/windows/BUILD-METADATA.txt
+          test -s release/android/CodeForge.apk
+          test -s release/android/SHA256-Android.txt
+          test -s release/android/ANDROID-SIGNING-METADATA.txt
+          test -s release/android/BUILD-METADATA.txt
+          WINDOWS_SIGNING="$(sed -n 's/^SIGNING=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | head -n 1)"
+          ANDROID_SIGNING="$(sed -n 's/^SIGNING=//p' release/android/ANDROID-SIGNING-METADATA.txt | head -n 1)"
+          if [[ "$WINDOWS_SIGNING" != "durable" || "$ANDROID_SIGNING" != "durable" ]]; then
+            echo "release_ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Release not published"
+              echo
+              echo "Both native artifacts were built, but at least one does not carry a durable production signature."
+              echo "The artifacts remain private Actions artifacts; no GitHub Release or public download was created."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ -z "$WINDOWS_SIGNING_CERT_THUMBPRINT" || -z "$ANDROID_SIGNING_CERT_SHA256" ]]; then
+            echo "release_ready=false" >> "$GITHUB_OUTPUT"
+            echo "Expected signer fingerprints are not configured; no public release was created." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "release_ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Install Android verification tools
+        if: steps.eligibility.outputs.release_ready == 'true'
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools build-tools;36.0.0"
 
-      - name: Verify required assets, signatures, and checksums
+      - name: Install Authenticode verification tool
+        if: steps.eligibility.outputs.release_ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osslsigncode
+
+      - name: Verify checksums, signer identities, and build provenance
+        if: steps.eligibility.outputs.release_ready == 'true'
         shell: bash
+        env:
+          WINDOWS_SIGNING_CERT_THUMBPRINT: ${{ vars.WINDOWS_SIGNING_CERT_THUMBPRINT }}
+          ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          test -s release/windows/CodeForge-Setup-Windows.exe
-          test -s release/windows/CodeForge-SelfSigned.cer
-          test -s release/windows/SHA256-Windows.txt
-          test -s release/android/CodeForge.apk
-          test -s release/android/SHA256-Android.txt
-          test -s release/android/BUILD-METADATA.txt
-          (cd release/windows && sed 's#  release/#  #' SHA256-Windows.txt | sha256sum -c -)
-          (cd release/android && sed 's#  release/#  #' SHA256-Android.txt | sha256sum -c -)
+          (cd release/windows && sha256sum -c SHA256-Windows.txt)
+          (cd release/android && sha256sum -c SHA256-Android.txt)
+          test -s release/windows/CodeForge-Windows-Certificate.cer
+          EXPECTED_WINDOWS="$(printf '%s' "$WINDOWS_SIGNING_CERT_THUMBPRINT" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+          METADATA_WINDOWS="$(sed -n 's/^THUMBPRINT=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          CERT_WINDOWS="$(openssl x509 -inform DER -in release/windows/CodeForge-Windows-Certificate.cer -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          test "$METADATA_WINDOWS" = "$EXPECTED_WINDOWS"
+          test "$CERT_WINDOWS" = "$EXPECTED_WINDOWS"
+          osslsigncode verify -CAfile /etc/ssl/certs/ca-certificates.crt -in release/windows/CodeForge-Setup-Windows.exe
           SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/android/CodeForge.apk
-          printf 'Commit: %s\nWorkflow run: %s\nVersion: 1.0.%s\n' "${{ github.event.workflow_run.head_sha }}" "${{ github.event.workflow_run.id }}" "${{ github.event.workflow_run.run_number }}" > release/BUILD-INFO.txt
-          sha256sum release/windows/CodeForge-Setup-Windows.exe release/android/CodeForge.apk > release/SHA256SUMS.txt
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/android/CodeForge.apk | tee release/android/SIGNATURE-VERIFICATION.txt
+          EXPECTED_ANDROID="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
+          ACTUAL_ANDROID="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/android/SIGNATURE-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          METADATA_ANDROID="$(sed -n 's/^CERT_SHA256=//p' release/android/ANDROID-SIGNING-METADATA.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          test "$ACTUAL_ANDROID" = "$EXPECTED_ANDROID"
+          test "$METADATA_ANDROID" = "$EXPECTED_ANDROID"
+          grep -Fx "COMMIT=$SOURCE_SHA" release/windows/BUILD-METADATA.txt
+          grep -Fx "WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID" release/windows/BUILD-METADATA.txt
+          grep -Fx "COMMIT=$SOURCE_SHA" release/android/BUILD-METADATA.txt
+          grep -Fx "WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID" release/android/BUILD-METADATA.txt
+          WINDOWS_SHA="$(awk '{print $1}' release/windows/SHA256-Windows.txt)"
+          ANDROID_SHA="$(awk '{print $1}' release/android/SHA256-Android.txt)"
+          WINDOWS_SUBJECT="$(sed -n 's/^SUBJECT=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | head -n 1)"
+          WINDOWS_ISSUER="$(sed -n 's/^ISSUER=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | head -n 1)"
+          WINDOWS_THUMBPRINT="$(sed -n 's/^THUMBPRINT=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | head -n 1)"
+          ANDROID_CERT_SHA256="$ACTUAL_ANDROID"
+          printf '%s  CodeForge-Setup-Windows.exe\n%s  CodeForge.apk\n' "$WINDOWS_SHA" "$ANDROID_SHA" > release/SHA256SUMS.txt
+          {
+            printf '# CodeForge v1.0.%s\n\n' "${{ github.event.workflow_run.run_number }}"
+            printf 'Both native installers were built from commit %s and passed signature and checksum verification.\n\n' "$SOURCE_SHA"
+            printf '## Windows\n- File: CodeForge-Setup-Windows.exe\n- SHA-256: %s\n- Authenticode subject: %s\n- Issuer: %s\n- Certificate thumbprint: %s\n\n' "$WINDOWS_SHA" "$WINDOWS_SUBJECT" "$WINDOWS_ISSUER" "$WINDOWS_THUMBPRINT"
+            printf '## Android\n- File: CodeForge.apk\n- SHA-256: %s\n- Signer certificate SHA-256: %s\n\n' "$ANDROID_SHA" "$ANDROID_CERT_SHA256"
+            printf '## Build provenance\n- Commit: %s\n- Installer workflow run: %s\n- Version code: %s\n' "$SOURCE_SHA" "$UPSTREAM_RUN_ID" "${{ github.event.workflow_run.run_number }}"
+          } > release/RELEASE-NOTES.md
 
-      - name: Publish a new versioned GitHub Release
+      - name: Prevent out-of-order release publication
+        id: sequence
+        if: steps.eligibility.outputs.release_ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: node scripts/check-release-sequence.mjs
+
+      - name: Create verified draft release with all assets
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.event.workflow_run.run_number }}
           target_commitish: ${{ github.event.workflow_run.head_sha }}
           name: CodeForge v1.0.${{ github.event.workflow_run.run_number }}
-          make_latest: true
-          generate_release_notes: true
-          body: |
-            Verified Windows and Android installers for commit ${{ github.event.workflow_run.head_sha }}.
-
-            Windows: signed with a per-build self-signed publisher certificate. Import the included certificate only if you trust this build.
-            Android: the APK signature is verified. This build uses a per-build signing identity; a reinstall may be required for future versions.
+          draft: true
+          make_latest: false
+          body_path: release/RELEASE-NOTES.md
+          fail_on_unmatched_files: true
           files: |
             release/windows/CodeForge-Setup-Windows.exe
-            release/windows/CodeForge-SelfSigned.cer
+            release/windows/CodeForge-Windows-Certificate.cer
+            release/windows/WINDOWS-SIGNING-METADATA.txt
+            release/windows/BUILD-METADATA.txt
             release/windows/SHA256-Windows.txt
             release/android/CodeForge.apk
-            release/android/SHA256-Android.txt
+            release/android/ANDROID-SIGNING-METADATA.txt
+            release/android/ANDROID-SIGNING-VERIFICATION.txt
+            release/android/APK-METADATA.txt
             release/android/BUILD-METADATA.txt
-            release/BUILD-INFO.txt
+            release/android/SHA256-Android.txt
             release/SHA256SUMS.txt
+            release/RELEASE-NOTES.md
+
+      - name: Publish the verified release
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.event.workflow_run.run_number }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          name: CodeForge v1.0.${{ github.event.workflow_run.run_number }}
+          draft: false
+          make_latest: true
+          body_path: release/RELEASE-NOTES.md
+
+      - name: Verify published release assets and downloads
+        if: steps.eligibility.outputs.release_ready == 'true' && steps.sequence.outputs.release_ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v1.0.${{ github.event.workflow_run.run_number }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --json isDraft,assets > release/published-release.json; then
+            gh release edit "$TAG" --draft || true
+            exit 1
+          fi
+          if ! jq -e '.isDraft == false and any(.assets[]; .name == "CodeForge-Setup-Windows.exe" and .size > 0) and any(.assets[]; .name == "CodeForge.apk" and .size > 0) and any(.assets[]; .name == "SHA256SUMS.txt" and .size > 0)' release/published-release.json >/dev/null; then
+            gh release edit "$TAG" --draft || true
+            echo "::error::Published release is missing a required non-empty asset; release was returned to draft."
+            exit 1
+          fi
+          mkdir -p release/download-check
+          if ! gh release download "$TAG" --pattern CodeForge-Setup-Windows.exe --pattern CodeForge.apk --dir release/download-check; then
+            gh release edit "$TAG" --draft || true
+            echo "::error::Published assets could not be downloaded; release was returned to draft."
+            exit 1
+          fi
+          cmp release/windows/CodeForge-Setup-Windows.exe release/download-check/CodeForge-Setup-Windows.exe
+          cmp release/android/CodeForge.apk release/download-check/CodeForge.apk
+          WINDOWS_EXPECTED="$(awk '{print $1}' release/windows/SHA256-Windows.txt)"
+          ANDROID_EXPECTED="$(awk '{print $1}' release/android/SHA256-Android.txt)"
+          WINDOWS_DOWNLOADED="$(sha256sum release/download-check/CodeForge-Setup-Windows.exe | awk '{print $1}')"
+          ANDROID_DOWNLOADED="$(sha256sum release/download-check/CodeForge.apk | awk '{print $1}')"
+          test "$WINDOWS_DOWNLOADED" = "$WINDOWS_EXPECTED"
+          test "$ANDROID_DOWNLOADED" = "$ANDROID_EXPECTED"
+          echo "Published release v1.0.${{ github.event.workflow_run.run_number }} contains both verified, downloadable native installers." >> "$GITHUB_STEP_SUMMARY"

@@ -265,3 +265,8 @@ body:has(.home-shell){overflow:auto;background:#080c12}
   .home-brand-icon{width:34px;height:34px}
   .home-brand-name{font-size:12px;letter-spacing:1px}
 }
+
+
+/* Production downloads stay visibly disabled until a verified release is pinned. */
+.download-link-disabled{width:100%;border:0;text-align:left;cursor:not-allowed;opacity:.68;background:#1a252a;color:#9aabb1}
+.download-link-disabled:disabled{cursor:not-allowed}

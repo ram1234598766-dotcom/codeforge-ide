@@ -1,0 +1,54 @@
+name: Release policy regression tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/main.tsx"
+      - "apps/web/src/lib/release.ts"
+      - ".github/workflows/production-installers.yml"
+      - ".github/workflows/native-shells-ci.yml"
+      - ".github/workflows/publish-versioned-release.yml"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/codeforge-worker-ci.yml"
+      - ".github/workflows/deploy-worker.yml"
+      - ".github/workflows/release-policy.yml"
+      - "scripts/verify-release-pipeline.mjs"
+      - "scripts/check-release-sequence.mjs"
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/src/main.tsx"
+      - "apps/web/src/lib/release.ts"
+      - ".github/workflows/production-installers.yml"
+      - ".github/workflows/native-shells-ci.yml"
+      - ".github/workflows/publish-versioned-release.yml"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/codeforge-worker-ci.yml"
+      - ".github/workflows/deploy-worker.yml"
+      - ".github/workflows/release-policy.yml"
+      - "scripts/verify-release-pipeline.mjs"
+      - "scripts/check-release-sequence.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  release-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Parse GitHub Actions workflow YAML
+        run: |
+          ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
+      - name: Verify durable signing and download gates
+        run: node scripts/verify-release-pipeline.mjs
