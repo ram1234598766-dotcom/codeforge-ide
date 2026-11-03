@@ -89,6 +89,8 @@ jobs:
           cp "$RELEASE_APK" release/CodeForge-unsigned.apk
           cp "$DEBUG_APK" release/CodeForge-debug.apk
           (cd release && sha256sum CodeForge-unsigned.apk CodeForge-debug.apk > SHA256-Android-CI.txt)
+      - name: Validate Android smoke script syntax
+        run: bash -n scripts/android-install-smoke.sh
       - name: Enable KVM for hardware-accelerated Android emulator
         shell: bash
         run: |
@@ -107,25 +109,7 @@ jobs:
           profile: pixel_2
           disable-linux-hw-accel: false
           disable-animations: true
-          script: |
-            adb install -r release/CodeForge-debug.apk
-            adb shell monkey -p com.codeforge.ide 1
-            for attempt in $(seq 1 30); do
-              if adb shell pidof com.codeforge.ide >/dev/null 2>&1; then
-                break
-              fi
-              sleep 1
-            done
-            adb shell pidof com.codeforge.ide
-            if adb logcat -d -s AndroidRuntime:E | grep -q "FATAL EXCEPTION"; then
-              adb logcat -d -s AndroidRuntime:E
-              exit 1
-            fi
-            adb uninstall com.codeforge.ide
-            if adb shell pm list packages | grep -q '^package:com.codeforge.ide$'; then
-              echo "Android package remained installed after cleanup."
-              exit 1
-            fi
+          script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-android-ci-apks

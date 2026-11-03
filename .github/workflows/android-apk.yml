@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build-android-apk:
-    name: Build and sign Android release APK
+    name: Build and sign Android preview APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -75,13 +75,17 @@ jobs:
         shell: bash
         env:
           EXPO_NO_TELEMETRY: "1"
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           APK_PATH="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
           test -n "$APK_PATH"
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           mkdir -p release
-          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" | head -n 5
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          test "$SOURCE_SHA" = "$EXPECTED_SHA"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$APK_PATH" > release/APK-METADATA.txt
+          head -n 5 release/APK-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK_PATH" release/CodeForge-unaligned.apk
           KEYSTORE_PATH="release/codeforge-preview.jks"
           STORE_PASSWORD="$(openssl rand -hex 32)"
@@ -97,19 +101,22 @@ jobs:
             --ks "$KEYSTORE_PATH" --ks-key-alias codeforge \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
             --out release/CodeForge.apk release/CodeForge-unaligned.apk
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt
           sha256sum release/CodeForge.apk > release/SHA256SUMS.txt
-          printf 'COMMIT=%s\n' "$GITHUB_SHA" > release/BUILD-METADATA.txt
+          printf 'COMMIT=%s\n' "$SOURCE_SHA" > release/BUILD-METADATA.txt
+          printf 'WORKFLOW_RUN_ID=%s\n' "$GITHUB_RUN_ID" >> release/BUILD-METADATA.txt
           printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
           printf 'SIGNING=temporary preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: CodeForge-signed-Android-APK-${{ github.sha }}
+          name: CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             release/CodeForge.apk
             release/SHA256SUMS.txt
             release/BUILD-METADATA.txt
+            release/APK-METADATA.txt
+            release/ANDROID-SIGNING-VERIFICATION.txt
           if-no-files-found: error
           retention-days: 30
