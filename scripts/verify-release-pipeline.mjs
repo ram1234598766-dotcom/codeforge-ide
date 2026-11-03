@@ -35,7 +35,7 @@ assert.match(native, /disable-linux-hw-accel: false/);
 assert.ok(androidPreview.includes("-storetype JKS"), "Preview signing must use a keystore type that supports distinct key and store passwords.");
 assert.ok(androidPreview.includes("--out release/CodeForge.apk release/CodeForge-unaligned.apk"));
 assert.ok(androidPreview.includes("verify --verbose --print-certs release/CodeForge.apk"));
-assert.ok(androidPreview.includes("trap 'rm -f \\"$KEYSTORE_PATH\\" release/CodeForge-unaligned.apk' EXIT"));
+assert.match(androidPreview, /trap 'rm -f "\$KEYSTORE_PATH" release\/CodeForge-unaligned\.apk' EXIT/);
 assert.doesNotMatch(androidPreview, /CodeForge-preview\\.apk/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
