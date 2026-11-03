@@ -80,6 +80,8 @@ for (const [name, workflow] of [
 }
 assert.equal((native.match(/Verify exact source revision/g) || []).length, 4);
 assert.ok((native.match(/shell: bash/g) || []).length >= 4);
+assert.ok(workerCI.includes('EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}'));
+assert.ok(workerCI.includes('wrangler@4 deploy --dry-run --message "CodeForge commit $EXPECTED_SHA"'));
 assert.ok(deploy.includes('EXPECTED_SHA: ${{ github.sha }}'));
 assert.ok(installers.includes('EXPECTED_SHA: ${{ github.sha }}'));
 assert.ok(publisher.includes('EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}'));
