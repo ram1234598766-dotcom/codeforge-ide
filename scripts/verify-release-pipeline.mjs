@@ -16,7 +16,28 @@ const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
 
-assert.match(installers, /WINDOWS_SIGNING_PFX_BASE64/);
+assert.match(installers, /SIGNPATH_API_TOKEN/);
+for (const setting of [
+  'SIGNPATH_ORGANIZATION_ID',
+  'SIGNPATH_PROJECT_SLUG',
+  'SIGNPATH_SIGNING_POLICY_SLUG',
+  'SIGNPATH_ARTIFACT_CONFIGURATION_SLUG',
+  'WINDOWS_SIGNING_CERT_THUMBPRINT',
+]) {
+  assert.ok(installers.includes(setting), 'Windows SignPath integration must require ' + setting + '.');
+}
+assert.match(installers, /signpath\/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092/);
+assert.match(installers, /uses: actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);
+assert.match(installers, /actions: read/);
+assert.match(installers, /GITHUB_REF -ne 'refs\/heads\/main'/);
+assert.match(installers, /archive: false/);
+assert.match(installers, /wait-for-completion: true/);
+assert.match(installers, /skip-decompress: true/);
+assert.match(installers, /SIGNPATH_SIGNING_REQUEST_ID\)\) \{/);
+assert.match(installers, /timeout-minutes: 120/);
+assert.match(installers, /Get-AuthenticodeSignature release\/CodeForge-Setup-Windows\.exe/);
+assert.match(installers, /SIGNING=unsigned/);
+assert.doesNotMatch(installers, /WINDOWS_SIGNING_PFX_BASE64|New-SelfSignedCertificate/);
 assert.match(installers, /ANDROID_KEYSTORE_BASE64/);
 assert.doesNotMatch(installers, /New-SelfSignedCertificate|keytool -genkeypair|codeforge-build-only|softprops\/action-gh-release/);
 assert.match(installers, /SIGNING=unsigned/);
