@@ -109,7 +109,7 @@ jobs:
           printf 'SIGNING=temporary preview key; not suitable for production updates\n' >> release/BUILD-METADATA.txt
 
       - name: Upload signed APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
