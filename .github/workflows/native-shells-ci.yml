@@ -117,6 +117,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  dependency-automation-policy:
+    name: Validate dependency update coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Parse Dependabot YAML
+        run: |
+          ruby -e 'require "yaml"; YAML.load_file(".github/dependabot.yml", aliases: true); puts "Dependabot YAML is valid."'
+      - name: Verify scheduled dependency coverage
+        run: node scripts/verify-dependabot-config.mjs
+
   desktop:
     runs-on: ubuntu-latest
     timeout-minutes: 20

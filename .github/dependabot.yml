@@ -1,0 +1,52 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /apps/web
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
