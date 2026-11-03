@@ -16,8 +16,13 @@ The Foundation's published terms require all of the following before signing:
 - Only CodeForge's own source-built artifacts may be signed. Do not submit third-party software binaries for signing.
 - All jobs leading to signing must use GitHub-hosted runners and SignPath's GitHub.com trusted build system.
 - Each release signing request must receive manual approval in SignPath.
+- Do not include runtime features designed to scan execution environments for exploitable vulnerabilities, expose unprotected ports, or bypass security controls. The Foundation explicitly permits analysis of software artifacts during development/testing, outside the software's execution environment.
 
-The app includes cloud authentication, workspace synchronization, and optional external AI-provider integrations. Do not copy a generic privacy statement into the signing policy until the actual data flows and privacy notice have been reviewed.
+### CodeForge-specific eligibility questions
+
+The current CodeForge "security" agent is a user-selected coding assistant role. Its prompt asks it to review workspace source files for threat boundaries, authentication, authorization, input validation, secret handling, and data exposure. It does not instruct the agent to scan the user's host, network ports, or runtime environment. This appears closer to the Foundation's development-time source-code analysis exception, but the Foundation must confirm its interpretation before approval. Describe this feature accurately in the application and ask for written confirmation; do not rename or hide the capability to evade the policy.
+
+CodeForge uses Supabase Auth, a Cloudflare Worker, D1/KV workspace persistence, Cloudflare Workers AI, and optional user-configured external model providers. Review the actual data flows and identify every destination. If the installer/app transfers user data to systems that were not specifically selected by the user, the Foundation's terms require the behavior to be described in a privacy policy, that policy to be displayed during installation, and installation options to disable those functions. Confirm the NSIS installer exposes a working uninstallation path. Do not claim the app is offline or that transfers are disabled unless the product actually behaves that way.
 
 ## Steps before applying
 
