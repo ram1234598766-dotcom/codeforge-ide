@@ -94,17 +94,17 @@ The public home screen at `/` introduces CodeForge, includes an interactive IDE 
 
 The production installer workflow builds Windows and Android artifacts. It signs only with durable production credentials; when either platform's signing configuration is missing, the artifact is marked unsigned and the versioned release workflow skips publication. It never creates a per-build self-signed Windows certificate or one-time Android keystore. No GitHub release is currently published, so the public download cards are intentionally disabled.
 
-Configure these GitHub repository secrets for production signing:
+Configure these GitHub Actions settings only after SignPath Foundation approves the project and its SignPath project is configured:
 
-- Windows: `WINDOWS_SIGNING_PFX_BASE64`, `WINDOWS_SIGNING_PFX_PASSWORD`
-- Android: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
+- Secret: `SIGNPATH_API_TOKEN`
+- Variables: `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`, `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`
+- Variable: `WINDOWS_SIGNING_CERT_THUMBPRINT` (SHA-1 thumbprint of the SignPath Foundation certificate assigned to CodeForge)
 
-Configure these repository variables with the expected certificate fingerprints:
+The Windows workflow uploads the unsigned installer as a GitHub Actions artifact, submits that exact artifact to SignPath, waits for completion/manual approval, retrieves the signed result, and verifies its Authenticode status and certificate thumbprint. Signing only runs on `main`. Missing configuration leaves the installer marked unsigned, and the release publisher refuses it. Do not create PFX files or copy private signing keys into GitHub.
 
-- `WINDOWS_SIGNING_CERT_THUMBPRINT` (SHA-1 certificate thumbprint of the trusted code-signing certificate)
-- `ANDROID_SIGNING_CERT_SHA256` (SHA-256 fingerprint of the Android signing certificate; colons and whitespace are accepted)
+For Android, configure secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, and variable `ANDROID_SIGNING_CERT_SHA256`. Keep the original keystore and passwords backed up securely and stable across releases. Never commit signing credentials. After a release is published and independently verified, update `VERIFIED_RELEASE_TAG` in `apps/web/src/lib/release.ts` through a reviewable pull request; download URLs are pinned to that exact tag, never to an unverified `latest` alias.
 
-The Windows PFX must contain a valid, non-expired CA-trusted Code Signing certificate and private key. The Android keystore and alias must remain stable across releases. Never commit either keystore, PFX, passwords, or private keys. After a release is published and independently verified, update `VERIFIED_RELEASE_TAG` in `apps/web/src/lib/release.ts` through a reviewable pull request; download URLs are pinned to that exact tag, never to an unverified `latest` alias.
+See [SignPath Foundation onboarding and eligibility](docs/signpath-foundation-onboarding.md) before applying. CodeForge is not yet approved by SignPath Foundation; do not describe current installers as Foundation-signed.
 
 Build commands: `pnpm build:desktop` and `pnpm build:mobile`.
 ## Still to build
