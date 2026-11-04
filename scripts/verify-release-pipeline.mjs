@@ -28,8 +28,8 @@ for (const setting of [
 }
 assert.match(installers, /signpath\/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092/);
 assert.match(installers, /uses: actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/);
-assert.match(installers, /uses: actions\\/upload-artifact@v7/);
-assert.match(publisher, /uses: actions\\/download-artifact@v8/);
+assert.match(installers, /uses: actions\/upload-artifact@v7/);
+assert.match(publisher, /uses: actions\/download-artifact@v8/);
 assert.match(installers, /actions: read/);
 assert.match(installers, /GITHUB_REF -ne 'refs\/heads\/main'/);
 assert.match(installers, /archive: false/);
