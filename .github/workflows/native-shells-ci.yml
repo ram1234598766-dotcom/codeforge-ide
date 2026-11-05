@@ -81,6 +81,12 @@ jobs:
           mkdir -p release
           "$SDK_BUILD_TOOLS/aapt" dump badging "$RELEASE_APK" > release/ANDROID-RELEASE-METADATA.txt
           "$SDK_BUILD_TOOLS/aapt" dump badging "$DEBUG_APK" > release/ANDROID-DEBUG-METADATA.txt
+          MERGER_REPORT="apps/mobile/android/app/build/outputs/logs/manifest-merger-release-report.txt"
+          if [[ -f "$MERGER_REPORT" ]]; then
+            cp "$MERGER_REPORT" release/ANDROID-RELEASE-MANIFEST-MERGER.txt
+            grep -E "uses-permission|android.permission" "$MERGER_REPORT" || true
+          fi
+          node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-RELEASE-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-DEBUG-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$RELEASE_APK"
@@ -238,5 +244,7 @@ jobs:
       - name: Parse GitHub Actions workflow YAML
         run: |
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
+      - name: Test Android permission policy
+        run: node --test scripts/verify-android-permissions.test.mjs
       - name: Verify release signing and download gates
         run: node scripts/verify-release-pipeline.mjs
