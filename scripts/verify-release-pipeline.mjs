@@ -3,10 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { latestPublishedRunNumber, shouldPublishRelease, main as checkReleaseSequence } from './check-release-sequence.mjs';
+import { blockedAndroidPermissions } from './verify-android-permissions.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
 const native = read('../.github/workflows/native-shells-ci.yml');
+const mobileConfig = JSON.parse(read('../apps/mobile/app.json'));
 const workerCI = read('../.github/workflows/codeforge-worker-ci.yml');
 const releasePolicy = read('../.github/workflows/release-policy.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
@@ -57,6 +59,12 @@ assert.match(native, /Gradle native build attempt/);
 assert.match(native, /Validate Android smoke script syntax/);
 assert.ok(native.includes("bash -n scripts/android-install-smoke.sh"));
 assert.ok(native.includes("script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk"));
+assert.match(native, /Verify Android permission allowlist/);
+assert.ok(native.includes("node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt"));
+assert.ok(native.includes("node --test scripts/verify-android-permissions.test.mjs"));
+for (const permission of blockedAndroidPermissions) {
+  assert.ok(mobileConfig.expo.android.blockedPermissions.includes(permission), 'Android app config must block ' + permission + '.');
+}
 assert.ok(androidSmoke.includes("adb wait-for-device"));
 assert.ok(androidSmoke.includes("adb install -r"));
 assert.ok(androidSmoke.includes("adb shell monkey"));
