@@ -43,11 +43,11 @@ test('allows the React Native debug overlay permission only in the debug APK', (
   );
   assert.throws(
     () => validateAndroidPermissions(debugManifest, 'release APK'),
-    /unexpected: android\\.permission\\.SYSTEM_ALERT_WINDOW/,
+    /unexpected: android\.permission\.SYSTEM_ALERT_WINDOW/,
   );
   for (const permission of blockedAndroidPermissions.filter(value => value !== 'android.permission.SYSTEM_ALERT_WINDOW')) {
     assert.throws(
-      () => validateAndroidPermissions(debugManifest + "\\nuses-permission: name='" + permission + "'", 'debug APK', allowedAndroidDebugPermissions),
+      () => validateAndroidPermissions(debugManifest + "\nuses-permission: name='" + permission + "'", 'debug APK', allowedAndroidDebugPermissions),
       error => error instanceof Error && error.message.includes(permission),
     );
   }
