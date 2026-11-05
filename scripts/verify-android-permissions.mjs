@@ -52,7 +52,7 @@ export function validateAndroidPermissions(badgingOutput, source = 'APK', allowe
 export function verifyAndroidPermissionFiles(paths) {
   for (const path of paths) {
     const output = readFileSync(path, 'utf8');
-    const allowedPermissions = /ANDROID-DEBUG-METADATA\\.txt$/i.test(path)
+    const allowedPermissions = /ANDROID-DEBUG-METADATA\.txt$/i.test(path)
       ? allowedAndroidDebugPermissions
       : allowedAndroidPermissions;
     const permissions = validateAndroidPermissions(output, path, allowedPermissions);
