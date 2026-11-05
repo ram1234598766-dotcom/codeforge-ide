@@ -220,6 +220,27 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw "Silent NSIS uninstall failed with exit code $($uninstall.ExitCode)." }
           if (Test-Path $installed.FullName) { throw "The Tauri main binary remained after uninstall smoke test." }
           "Windows NSIS install/uninstall smoke test passed. SHA-256: $hash" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($env:RUNNER_ARCH -ne "X64") { throw "Windows installer CI requires the x64 hosted runner; got $env:RUNNER_ARCH." }
+          $tauriConfig = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $desktopPackage = Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json
+          $installerSize = (Get-Item release/CodeForge-Setup-Windows.exe).Length
+          @(
+            "COMMIT=$env:GITHUB_SHA",
+            "WORKFLOW_RUN_ID=$env:GITHUB_RUN_ID",
+            "PRODUCT=$($tauriConfig.productName)",
+            "APP_VERSION=$($tauriConfig.version)",
+            "PACKAGE_VERSION=$($desktopPackage.version)",
+            "IDENTIFIER=$($tauriConfig.identifier)",
+            "TARGET_TRIPLE=x86_64-pc-windows-msvc",
+            "RUNNER_OS=$env:RUNNER_OS",
+            "RUNNER_ARCH=$env:RUNNER_ARCH",
+            "BUNDLE=NSIS",
+            "INSTALL_MODE=$($tauriConfig.bundle.windows.nsis.installMode)",
+            "SIGNING=unsigned",
+            "AUTHENTICODE_STATUS=$($signature.Status)",
+            "SHA256=$hash",
+            "SIZE_BYTES=$installerSize"
+          ) | Set-Content -Path release/BUILD-METADATA-Windows.txt -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-windows-ci-installer
