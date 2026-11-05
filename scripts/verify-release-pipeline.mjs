@@ -27,7 +27,7 @@ for (const setting of [
   assert.ok(installers.includes(setting), 'Windows SignPath integration must require ' + setting + '.');
 }
 assert.match(installers, /signpath\/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092/);
-assert.match(installers, /uses: actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);
+assert.match(installers, /uses: actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/);
 assert.match(installers, /actions: read/);
 assert.match(installers, /GITHUB_REF -ne 'refs\/heads\/main'/);
 assert.match(installers, /archive: false/);
