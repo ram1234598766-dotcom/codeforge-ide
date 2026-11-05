@@ -13,6 +13,13 @@ export const allowedAndroidPermissions = [
   'com.codeforge.ide.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
 ];
 
+// React Native adds SYSTEM_ALERT_WINDOW to debug builds for its developer overlay.
+// It remains blocked from the production APK.
+export const allowedAndroidDebugPermissions = [
+  ...allowedAndroidPermissions,
+  'android.permission.SYSTEM_ALERT_WINDOW',
+];
+
 export function parseAndroidPermissions(badgingOutput) {
   const permissions = new Set();
   const pattern = /^\s*uses-permission(?:-[^:]+)?\s*:\s*name='([^']+)'/gm;
@@ -22,9 +29,9 @@ export function parseAndroidPermissions(badgingOutput) {
   return [...permissions].sort();
 }
 
-export function validateAndroidPermissions(badgingOutput, source = 'APK') {
+export function validateAndroidPermissions(badgingOutput, source = 'APK', allowedPermissions = allowedAndroidPermissions) {
   const actual = parseAndroidPermissions(badgingOutput);
-  const allowed = new Set(allowedAndroidPermissions);
+  const allowed = new Set(allowedPermissions);
   const required = new Set(['android.permission.INTERNET']);
   const missing = [...required].filter(permission => !actual.includes(permission));
   const unexpected = actual.filter(permission => !allowed.has(permission));
@@ -45,7 +52,10 @@ export function validateAndroidPermissions(badgingOutput, source = 'APK') {
 export function verifyAndroidPermissionFiles(paths) {
   for (const path of paths) {
     const output = readFileSync(path, 'utf8');
-    const permissions = validateAndroidPermissions(output, path);
+    const allowedPermissions = /ANDROID-DEBUG-METADATA\\.txt$/i.test(path)
+      ? allowedAndroidDebugPermissions
+      : allowedAndroidPermissions;
+    const permissions = validateAndroidPermissions(output, path, allowedPermissions);
     console.log(path + ': allowed permissions: ' + permissions.join(', '));
   }
 }
