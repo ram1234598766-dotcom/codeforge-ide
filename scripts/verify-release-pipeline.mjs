@@ -62,7 +62,7 @@ assert.ok(native.includes('"TARGET_TRIPLE=x86_64-pc-windows-msvc"'));
 assert.ok(native.includes('"SIGNING=unsigned"'));
 assert.ok(native.includes('"AUTHENTICODE_STATUS=$($signature.Status)"'));
 assert.ok(native.includes('"SHA256=$hash"'));
-assert.ok(native.includes('"SIZE_BYTES=$((Get-Item release/CodeForge-Setup-Windows.exe).Length)"'));
+assert.ok(native.includes('"SIZE_BYTES=$installerSize"'));
 assert.match(native, /android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
 assert.ok(native.includes("codeforge-desktop.exe"));
 assert.match(native, /Gradle native build attempt/);
