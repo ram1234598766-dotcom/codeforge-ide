@@ -61,7 +61,7 @@ test('selects the debug-only allowlist from the metadata filename', () => {
   const directory = mkdtempSync(join(tmpdir(), 'codeforge-android-permissions-'));
   const debugPath = join(directory, 'ANDROID-DEBUG-METADATA.txt');
   const releasePath = join(directory, 'ANDROID-RELEASE-METADATA.txt');
-  const debugManifest = minimalManifest + "\\nuses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'";
+  const debugManifest = minimalManifest + "\nuses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'";
   try {
     writeFileSync(debugPath, debugManifest);
     writeFileSync(releasePath, minimalManifest);
