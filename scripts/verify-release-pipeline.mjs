@@ -62,6 +62,23 @@ assert.ok(native.includes("script: bash scripts/android-install-smoke.sh release
 assert.match(native, /Verify Android permission allowlist/);
 assert.ok(native.includes("node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt"));
 assert.ok(native.includes("node --test scripts/verify-android-permissions.test.mjs"));
+assert.match(installers, /name: Verify Android permission allowlist/);
+assert.ok(
+  installers.includes("node scripts/verify-android-permissions.mjs release/APK-METADATA.txt"),
+  "The production APK must pass the same fail-closed permission allowlist as CI before signing or unsigned staging.",
+);
+const productionApkMetadataStep = installers.indexOf("name: Align APK and record package metadata");
+const productionPermissionGateStep = installers.indexOf("name: Verify Android permission allowlist");
+const productionSigningStep = installers.indexOf("name: Sign APK with durable production keystore");
+const productionUnsignedStageStep = installers.indexOf("name: Stage unsigned APK when durable signing is unavailable");
+assert.ok(productionApkMetadataStep >= 0, "The production APK metadata must be extracted before permission validation.");
+assert.ok(
+  productionPermissionGateStep > productionApkMetadataStep
+    && productionPermissionGateStep < productionSigningStep
+    && productionPermissionGateStep < productionUnsignedStageStep,
+  "The production APK permission gate must run before signing and before any unsigned fallback is staged.",
+);
+
 for (const permission of blockedAndroidPermissions) {
   assert.ok(mobileConfig.expo.android.blockedPermissions.includes(permission), 'Android app config must block ' + permission + '.');
 }
