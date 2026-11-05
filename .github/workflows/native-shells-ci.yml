@@ -86,14 +86,19 @@ jobs:
             cp "$MERGER_REPORT" release/ANDROID-RELEASE-MANIFEST-MERGER.txt
             grep -E "uses-permission|android.permission" "$MERGER_REPORT" || true
           fi
-          node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-RELEASE-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-DEBUG-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$RELEASE_APK"
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$DEBUG_APK"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$DEBUG_APK" | tee release/ANDROID-DEBUG-SIGNATURE.txt
-          cp "$RELEASE_APK" release/CodeForge-unsigned.apk
-          cp "$DEBUG_APK" release/CodeForge-debug.apk
+      - name: Verify Android permission allowlist
+        run: node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt
+      - name: Stage Android CI APKs and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk release/CodeForge-unsigned.apk
+          cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk release/CodeForge-debug.apk
           (cd release && sha256sum CodeForge-unsigned.apk CodeForge-debug.apk > SHA256-Android-CI.txt)
       - name: Validate Android smoke script syntax
         run: bash -n scripts/android-install-smoke.sh
