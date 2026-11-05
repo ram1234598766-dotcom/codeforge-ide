@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  allowedAndroidDebugPermissions,
   allowedAndroidPermissions,
   blockedAndroidPermissions,
   parseAndroidPermissions,
@@ -29,6 +30,24 @@ test('rejects storage, overlay, vibration, and local-network permissions', () =>
     const output = minimalManifest + "\nuses-permission: name='" + permission + "'";
     assert.throws(
       () => validateAndroidPermissions(output, 'fixture APK'),
+      error => error instanceof Error && error.message.includes(permission),
+    );
+  }
+});
+
+test('allows the React Native debug overlay permission only in the debug APK', () => {
+  const debugManifest = minimalManifest + "\nuses-permission: name='android.permission.SYSTEM_ALERT_WINDOW'";
+  assert.deepEqual(
+    validateAndroidPermissions(debugManifest, 'debug APK', allowedAndroidDebugPermissions),
+    [...allowedAndroidDebugPermissions].sort(),
+  );
+  assert.throws(
+    () => validateAndroidPermissions(debugManifest, 'release APK'),
+    /unexpected: android\\.permission\\.SYSTEM_ALERT_WINDOW/,
+  );
+  for (const permission of blockedAndroidPermissions.filter(value => value !== 'android.permission.SYSTEM_ALERT_WINDOW')) {
+    assert.throws(
+      () => validateAndroidPermissions(debugManifest + "\\nuses-permission: name='" + permission + "'", 'debug APK', allowedAndroidDebugPermissions),
       error => error instanceof Error && error.message.includes(permission),
     );
   }
