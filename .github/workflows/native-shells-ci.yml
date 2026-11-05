@@ -191,7 +191,7 @@ jobs:
       - name: Build Windows NSIS installer
         working-directory: apps/desktop
         run: npx tauri build --bundles nsis
-      - name: Install, verify, and uninstall on the disposable runner
+      - name: Install, launch, verify, and uninstall on the disposable runner
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -207,6 +207,13 @@ jobs:
           if ($install.ExitCode -ne 0) { throw "Silent NSIS install failed with exit code $($install.ExitCode)." }
           $installed = Get-ChildItem "$env:LOCALAPPDATA" -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("codeforge-desktop.exe", "CodeForge.exe") } | Select-Object -First 1
           if (-not $installed) { throw "The Tauri main binary was not found after silent installation." }
+          $launch = Start-Process -FilePath $installed.FullName -PassThru
+          Start-Sleep -Seconds 15
+          $launch.Refresh()
+          if ($launch.HasExited) { throw "The installed CodeForge application exited during launch smoke test with code $($launch.ExitCode)." }
+          Stop-Process -Id $launch.Id -Force
+          $launch.WaitForExit()
+          "Windows application launch smoke test passed." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           $uninstaller = Get-ChildItem $installed.Directory.FullName -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @("uninstall.exe", "unins000.exe") } | Select-Object -First 1
           if (-not $uninstaller) { throw "The installed application did not contain a discoverable NSIS uninstaller." }
           $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
