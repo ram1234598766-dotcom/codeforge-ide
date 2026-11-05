@@ -11,7 +11,7 @@ This document records the repository's declared runtime configuration and the ev
 | Web IDE | Vite/React application served as Cloudflare Worker static assets; Node.js 22 in CI; Worker compatibility date 2026-10-30 | Unit/regression tests, TypeScript check, clean Vite build, Wrangler dry-run in Worker CI | The web package currently uses floating latest ranges for Vite, React, React DOM, and the Vite React plugin. This is not a fully pinned dependency baseline. |
 | Cloud API | Cloudflare Worker; Supabase identity; D1 binding CODEFORGE_DB; KV binding CODEFORGE_KV; Workers AI binding AI | Worker unit tests and dry-run; production bindings inspected read-only | Cloud workspace and AI features require network access. No production D1/KV writes are part of this record. |
 | Windows desktop | Tauri 2 shell; application ID com.codeforge.ide; NSIS per-user installer | Windows runner builds the installer and performs install/uninstall smoke checks in Native shells CI | The shell loads the hosted IDE and requires network access. Native filesystem and OS-shell permissions are intentionally not enabled. Production distribution requires the durable Authenticode identity configured in Actions. The current CI smoke test does not launch the installed Windows application. |
-| Android | Expo SDK ~58.0.0; React Native 0.88.1; WebView 14.0.1; application ID com.codeforge.ide; INTERNET permission only; backup disabled | Native shells CI generates the native project, assembles release/debug APKs, checks package/alignment/signature, and installs the debug APK in a disposable emulator | The shell loads the hosted IDE and requires network access. The CI emulator test is API 35 x86_64; this is not a minimum supported Android OS claim. Production updates require the same durable Android signing key for every version. |
+| Android | Expo SDK ~58.0.0; React Native 0.88.1; WebView 14.0.1; application ID com.codeforge.ide; app config declares INTERNET; backup disabled | Native shells CI generates the native project, assembles release/debug APKs, checks package/alignment/signature, and installs the debug APK in a disposable emulator | The built APKs currently contain unexplained additional permissions beyond INTERNET (see Android permission review below). The CI emulator test is API 35 x86_64; this is not a minimum supported Android OS claim. Production updates require the same durable Android signing key for every version. |
 | Android CI target | Java 17; Android SDK platform 36 and build-tools 36.0.0; emulator API 35, x86_64 | Defined in .github/workflows/native-shells-ci.yml | CI target is not a minimum supported Android OS version. |
 
 ### Compatibility claims
@@ -35,6 +35,21 @@ Evidence below is tied to exact source revisions. Preview-branch evidence is exp
 The main branch's latest Cloudflare Worker deployment metadata reports version 173 at 100% traffic with a source annotation matching 44c374ff8dc7245b71007ee4d434e5d21a1ab67a. The D1 and KV bindings were inspected read-only. Invocation-level logs are not available from the current Worker settings because observability is unset and Logpush is disabled. Live HTTP probes should be repeated from a networked runner before any future deployment.
 
 The Android dependency audit has reported five moderate advisories in the mobile dependency tree. The configured high-severity threshold passes, but this is not a clean bill of health; compatible remediation remains outstanding.
+
+### Android permission review
+
+Read-only inspection of the current main CI artifact (run 41696969462, SHA 44c374ff8dc7245b71007ee4d434e5d21a1ab67a) and the latest production-installer artifact (run 41692905974, SHA 96860ddd59a60919fef746b8ef2a5afa07c4fb56) found these permissions in the release APKs:
+
+- android.permission.INTERNET
+- android.permission.READ_EXTERNAL_STORAGE (maxSdkVersion 32)
+- android.permission.WRITE_EXTERNAL_STORAGE (maxSdkVersion 32)
+- android.permission.SYSTEM_ALERT_WINDOW
+- android.permission.VIBRATE
+- com.codeforge.ide.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+
+The main CI debug APK also contains android.permission.ACCESS_LOCAL_NETWORK. The tracked app config declares only INTERNET, and the repository does not declare native storage, overlay, vibration, or local-network features. The artifact does not include the manifest-merger source report, so the transitive manifest that introduced each permission has not yet been identified.
+
+Open PR [#51](https://github.com/ram1234598766-dotcom/codeforge-ide/pull/51) adds Expo android.blockedPermissions, parser regression tests, and a CI allowlist check for both release and debug APKs. Its Android build and manifest check are still pending; do not claim the final APK permission surface is minimal until that exact PR head passes. Expo documents android.blockedPermissions as the mechanism for removing permissions contributed by merged package manifests: https://docs.expo.dev/guides/permissions/.
 
 ## Performance and resource measurements
 
