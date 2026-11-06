@@ -16,6 +16,9 @@ const versionedReleasePublisher = read('../.github/workflows/publish-versioned-r
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
 const deploy = read('../.github/workflows/deploy-worker.yml');
+const wrangler = read('../wrangler.toml');
+const workerEntry = read('../apps/web/functions/index.ts');
+const workerAssets = read('../apps/web/functions/assets.ts');
 
 const d1MigrationTest = read('../scripts/test-d1-migrations.py');
 
@@ -25,6 +28,9 @@ assert.ok(deploy.includes('SOURCE_REF: ${{ github.ref }}'), 'Deployment must cap
 assert.ok(deploy.includes('test "$SOURCE_REF" = "refs/heads/main"'), 'Deployment must reject non-main source refs.');
 assert.ok(!deploy.includes('\n  push:') && !deploy.includes('\n  pull_request:'), 'Production deployment must not run on push or PR close.');
 assert.ok(deploy.includes('confirm_production_deploy:') && deploy.includes('required: true'), 'Production deployment must require an explicit confirmation input.');
+assert.match(wrangler, /run_worker_first\s*=\s*\[[^\]]*\"\/app\"[^\]]*\"\/app\/\*\"/s, 'The /app SPA route must pass through the Worker so HTML cache headers are applied.');
+assert.ok(workerEntry.includes('preventHtmlAssetCaching') && workerAssets.includes('Cache-Control'), 'The Worker must apply non-cacheable headers to HTML responses.');
+assert.ok(releasePolicy.includes('wrangler.toml'), 'Worker asset routing changes must trigger release-policy tests.');
 assert.ok(deploy.includes('test "$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"'), 'Production deployment must reject an unconfirmed dispatch.');
 assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "false"'), 'D1 migrations must default to disabled.');
 assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
