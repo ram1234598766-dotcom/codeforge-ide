@@ -192,6 +192,15 @@ assert.match(publisher, /steps\.sequence\.outputs\.release_ready == 'true'/);
 assert.match(publisher, /Verify public paired release downloads/);
 assert.match(publisher, /CodeForge-Setup-Windows\.exe/);
 assert.match(publisher, /CodeForge\.apk/);
+assert.match(publisher, /android-actions\/setup-android@v4/, 'The release publisher must independently re-parse the Android APK.');
+assert.match(publisher, /aapt" dump badging CodeForge\.apk/, 'The release publisher must parse the actual signed APK manifest/package.');
+assert.match(publisher, /versionCode=.*RUN_NUMBER/, 'The APK version code must match the production installer run.');
+assert.match(publisher, /zipalign" -c 4 CodeForge\.apk/, 'The final signed APK must pass ZIP alignment verification after signing.');
+assert.match(publisher, /verify-android-permissions\.mjs/, 'The release publisher must re-run the Android permission allowlist against parsed APK metadata.');
+assert.match(publisher, /apksigner" verify --verbose --Werr --print-certs CodeForge\.apk/, 'The release publisher must independently verify the APK signature and signer certificate.');
+assert.match(installers, /zipalign" -c 4 release\/CodeForge\.apk/, 'Production APK must remain aligned after it is signed.');
+assert.match(installers, /apksigner" verify --verbose --Werr --print-certs release\/CodeForge\.apk/, 'Production APK must pass strict apksigner verification.');
+assert.match(installers, /on:\s*push:\s*branches: \[main\]/, 'Every update pushed to main must trigger the paired installer build pipeline.');
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 for (const [name, workflow] of [
