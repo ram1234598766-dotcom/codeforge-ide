@@ -46,6 +46,8 @@ jobs:
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
+      - name: Verify hosted CodeForge entry routes and assets
+        run: node scripts/verify-hosted-app.mjs
       - name: Export Android and iOS bundles
         run: npx --yes pnpm@9.15.0 --filter @codeforge/mobile run build
       - name: Generate Android native project

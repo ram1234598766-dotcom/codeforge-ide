@@ -54,19 +54,12 @@ jobs:
           done
           ANDROID_SIGNING="$(sed -n 's/^SIGNING=//p' release/android/ANDROID-SIGNING-METADATA.txt | head -n 1)"
           if [[ "$ANDROID_SIGNING" != "durable" ]]; then
-            echo "release_ready=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "## Android release not published"
-              echo
-              echo "The APK was built, but the production signing workflow did not verify the durable Android release keystore."
-              echo "The APK remains a private Actions artifact; no public release or download was created."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::A production-signed Android APK is required; unsigned APK publication is disabled."
+            exit 1
           fi
           if [[ -z "$ANDROID_SIGNING_CERT_SHA256" ]]; then
-            echo "release_ready=false" >> "$GITHUB_OUTPUT"
-            echo "ANDROID_SIGNING_CERT_SHA256 is not configured; no public APK release was created." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::ANDROID_SIGNING_CERT_SHA256 is missing; refusing to publish."
+            exit 1
           fi
           echo "release_ready=true" >> "$GITHUB_OUTPUT"
 
@@ -93,7 +86,7 @@ jobs:
           grep -Fx "WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID" BUILD-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" APK-METADATA.txt
           SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs CodeForge.apk | tee ANDROID-SIGNING-VERIFICATION.txt
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs CodeForge.apk | tee ANDROID-SIGNING-VERIFICATION.txt
           EXPECTED_ANDROID="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
           ACTUAL_ANDROID="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ANDROID-SIGNING-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
           METADATA_ANDROID="$(sed -n 's/^CERT_SHA256=//p' ANDROID-SIGNING-METADATA.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"

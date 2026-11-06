@@ -13,6 +13,11 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "apps/mobile/App.tsx"
+      - "apps/web/src/styles.css"
+      - "apps/web/index.html"
+      - "scripts/verify-hosted-app.mjs"
+      - "scripts/verify-hosted-app.test.mjs"
       - "scripts/check-release-sequence.mjs"
       - "migrations/0005_code_change_requests.sql"
       - "migrations/0006_workspace_search_revisions.sql"
@@ -30,6 +35,11 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "apps/mobile/App.tsx"
+      - "apps/web/src/styles.css"
+      - "apps/web/index.html"
+      - "scripts/verify-hosted-app.mjs"
+      - "scripts/verify-hosted-app.test.mjs"
       - "scripts/check-release-sequence.mjs"
       - "migrations/0005_code_change_requests.sql"
       - "migrations/0006_workspace_search_revisions.sql"
@@ -58,5 +68,7 @@ jobs:
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
       - name: Test D1 migrations on a disposable SQLite fixture
         run: python3 scripts/test-d1-migrations.py
+      - name: Test hosted SPA and Android route smoke logic
+        run: node --test scripts/verify-hosted-app.test.mjs
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs

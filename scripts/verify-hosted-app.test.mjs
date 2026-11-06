@@ -5,8 +5,8 @@ import { verifyHostedApp } from './verify-hosted-app.mjs';
 function buildFetch(overrides = {}) {
   const html = `<!doctype html><html><head><link rel="stylesheet" href="/assets/app-abc.css"></head><body><div id="root"></div><script type="module" src="/assets/app-abc.js"></script></body></html>`;
   const responses = new Map([
-    ['/', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8'}})],
-    ['/app', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8'}})],
+    ['/', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate, max-age=0'}})],
+    ['/app', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate, max-age=0'}})],
     ['/api/health', new Response(JSON.stringify({ok:true,database:'connected'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/config', new Response(JSON.stringify({url:'https://project.supabase.co',publishableKey:'sb_publishable_test'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/workspaces', new Response(JSON.stringify({error:'Authentication required'}), {status:401, headers:{'content-type':'application/json'}})],
