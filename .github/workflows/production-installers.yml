@@ -3,11 +3,6 @@ name: CodeForge production installers
 on:
   push:
     branches: [main]
-    paths:
-      - "apps/desktop/**"
-      - "apps/mobile/**"
-      - "apps/web/**"
-      - ".github/workflows/production-installers.yml"
   workflow_dispatch:
 
 permissions:
@@ -162,6 +157,12 @@ jobs:
           $hash = (Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows.txt -Encoding ascii -NoNewline
           $signing = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING=*" } | Select-Object -First 1
+          if ($signing -eq "SIGNING=unsigned") {
+            $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
+            if ($signature.Status -ne "NotSigned") {
+              throw "Windows installer is marked unsigned, but Authenticode verification returned $($signature.Status)."
+            }
+          }
           @(
             "COMMIT=$env:GITHUB_SHA",
             "WORKFLOW_RUN_ID=$env:GITHUB_RUN_ID",
