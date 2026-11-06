@@ -108,7 +108,10 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Verify Android checksum, signer, package, and provenance
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+      - name: Re-parse and verify Android APK package, permissions, alignment, signer, and provenance
         shell: bash
         env:
           ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
@@ -123,20 +126,32 @@ jobs:
           done
           sha256sum -c SHA256-Android.txt
           grep -Fx "PACKAGE=com.codeforge.ide" BUILD-METADATA.txt
+          grep -Fx "VERSION=1.0.$RUN_NUMBER" BUILD-METADATA.txt
+          grep -Fx "VERSION_CODE=$RUN_NUMBER" BUILD-METADATA.txt
           grep -Fx "SIGNING=durable" BUILD-METADATA.txt
           grep -Fx "COMMIT=$SOURCE_SHA" BUILD-METADATA.txt
           grep -Fx "WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID" BUILD-METADATA.txt
           grep -Fx "RUN_NUMBER=$RUN_NUMBER" BUILD-METADATA.txt
-          grep -q "^package: name='com.codeforge.ide'" APK-METADATA.txt
+
+          SDK_BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$SDK_BUILD_TOOLS/aapt"
+          test -x "$SDK_BUILD_TOOLS/zipalign"
+          test -x "$SDK_BUILD_TOOLS/apksigner"
+
+          # Parse the actual signed APK again; do not rely solely on build-time metadata.
+          "$SDK_BUILD_TOOLS/aapt" dump badging CodeForge.apk > APK-METADATA-REVALIDATED.txt
+          grep -q "^package: name='com.codeforge.ide' versionCode='$RUN_NUMBER' versionName='1.0.$RUN_NUMBER'" APK-METADATA-REVALIDATED.txt
+          node ../../scripts/verify-android-permissions.mjs APK-METADATA-REVALIDATED.txt
+          "$SDK_BUILD_TOOLS/zipalign" -c 4 CodeForge.apk
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs CodeForge.apk | tee ANDROID-SIGNING-VERIFICATION-RELEASE.txt
+
           EXPECTED_ANDROID="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
-          ACTUAL_ANDROID="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ANDROID-SIGNING-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          ACTUAL_ANDROID="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ANDROID-SIGNING-VERIFICATION-RELEASE.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
           METADATA_ANDROID="$(sed -n 's/^CERT_SHA256=//p' ANDROID-SIGNING-METADATA.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
           [[ "$EXPECTED_ANDROID" =~ ^[A-F0-9]{64}$ ]]
           test "$ACTUAL_ANDROID" = "$EXPECTED_ANDROID"
           test "$METADATA_ANDROID" = "$EXPECTED_ANDROID"
-          SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs CodeForge.apk
-          echo "Android production signer, package, checksum, and provenance verified."
+          echo "Android production signer, freshly parsed manifest/package/version, permission allowlist, ZIP alignment, checksum, and provenance verified."
 
   publish:
     name: Publish one paired Windows and Android release
