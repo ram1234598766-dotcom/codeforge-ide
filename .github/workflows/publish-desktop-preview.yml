@@ -1,4 +1,4 @@
-name: Publish CodeForge Windows desktop preview
+name: Publish CodeForge signed Windows desktop preview
 
 on:
   workflow_run:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish explicitly unsigned Windows preview
+    name: Publish self-signed Windows preview
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -49,7 +49,7 @@ jobs:
             echo "upstream_run_id=$UPSTREAM_RUN_ID"
             echo "run_number=$RUN_NUMBER"
             echo "version=1.0.$RUN_NUMBER"
-            echo "tag=v1.0.$RUN_NUMBER-desktop-preview"
+            echo "tag=v1.0.$RUN_NUMBER-desktop-preview-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download Windows installer artifact
@@ -62,6 +62,7 @@ jobs:
           run-id: ${{ steps.source.outputs.upstream_run_id }}
 
       - name: Verify Windows preview artifact and checksum
+        id: verify
         shell: bash
         env:
           SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
@@ -70,27 +71,48 @@ jobs:
           TAG: ${{ steps.source.outputs.tag }}
         run: |
           set -euo pipefail
+          SIGNING_STATE="$(sed -n 's/^SIGNING=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | head -n 1)"
+          if [[ "$SIGNING_STATE" == "durable" ]]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "A trusted SignPath-signed Windows installer is reserved for the full versioned release pipeline."
+            exit 0
+          fi
+          if [[ "$SIGNING_STATE" != "self-signed" ]]; then
+            echo "::error::Only a verified self-signed Windows preview or a durable full release is accepted."
+            exit 1
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
           test -s release/windows/CodeForge-Setup-Windows.exe
           test -s release/windows/SHA256-Windows.txt
           test -s release/windows/BUILD-METADATA.txt
           test -s release/windows/WINDOWS-SIGNING-METADATA.txt
+          test -s release/windows/CodeForge-Windows-Certificate.cer
           grep -Fx "COMMIT=$SOURCE_SHA" release/windows/BUILD-METADATA.txt
           grep -Fx "WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID" release/windows/BUILD-METADATA.txt
           grep -Fx "RUN_NUMBER=$RUN_NUMBER" release/windows/BUILD-METADATA.txt
           grep -Fx "VERSION=1.0.$RUN_NUMBER" release/windows/BUILD-METADATA.txt
-          grep -Fx "SIGNING=unsigned" release/windows/BUILD-METADATA.txt
-          grep -Fx "SIGNING=unsigned" release/windows/WINDOWS-SIGNING-METADATA.txt
-          grep -Fx "SIGNATURE_STATUS=not-signed" release/windows/WINDOWS-SIGNING-METADATA.txt
+          grep -Fx "SIGNING=self-signed" release/windows/BUILD-METADATA.txt
+          grep -Fx "SIGNING=self-signed" release/windows/WINDOWS-SIGNING-METADATA.txt
+          grep -Fx "SIGNATURE_STATUS=Valid" release/windows/WINDOWS-SIGNING-METADATA.txt
+          grep -Fx "TRUST=not-publicly-trusted" release/windows/WINDOWS-SIGNING-METADATA.txt
           (cd release/windows && sha256sum -c SHA256-Windows.txt)
-          echo "UNSIGNED PREVIEW — NOT AUTHENTICODE SIGNED" > release/windows/UNSIGNED-PREVIEW-WARNING.txt
+          sudo apt-get update
+          sudo apt-get install -y osslsigncode
+          openssl x509 -inform DER -in release/windows/CodeForge-Windows-Certificate.cer -out release/windows/CodeForge-Windows-Certificate.pem
+          CERT_THUMBPRINT="$(openssl x509 -in release/windows/CodeForge-Windows-Certificate.pem -noout -fingerprint -sha1 | sed -E 's/^.*=//; s/://g' | tr '[:lower:]' '[:upper:]')"
+          EXPECTED_THUMBPRINT="$(sed -n 's/^THUMBPRINT=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          test -n "$CERT_THUMBPRINT"
+          test "$CERT_THUMBPRINT" = "$EXPECTED_THUMBPRINT"
+          osslsigncode verify -CAfile release/windows/CodeForge-Windows-Certificate.pem -in release/windows/CodeForge-Setup-Windows.exe
+          echo "SELF-SIGNED PREVIEW — NOT PUBLICLY TRUSTED" > release/windows/SELF-SIGNED-PREVIEW-WARNING.txt
           {
             printf '# CodeForge %s — Windows desktop preview\n\n' "$TAG"
-            printf '> **UNSIGNED PREVIEW:** This Windows installer is not Authenticode signed. Windows SmartScreen or Defender may display publisher and reputation warnings. It is provided for testing only and is not a trusted production installer.\n\n'
-            printf '## Installer\n- File: CodeForge-Setup-Windows.exe\n- Version: %s\n- SHA-256: %s\n- Signing: **Unsigned — no Authenticode signature**\n\n' \
+            printf '> **SELF-SIGNED PREVIEW:** The installer has a verified Authenticode signature from a CodeForge self-signed certificate. This certificate is not publicly trusted. Windows SmartScreen or Defender may still display warnings. The certificate is generated for this preview build and may change in a later release.\n\n'
+            printf '## Installer\n- File: CodeForge-Setup-Windows.exe\n- Version: %s\n- SHA-256: %s\n- Signing: **Self-signed Authenticode — not publicly trusted**\n- Public certificate: CodeForge-Windows-Certificate.cer\n\n' \
               "1.0.$RUN_NUMBER" "$(awk '{print $1}' release/windows/SHA256-Windows.txt)"
             printf '## Provenance\n- Source commit: %s\n- Production installer workflow run: %s\n\n' \
               "$SOURCE_SHA" "$UPSTREAM_RUN_ID"
-            printf '## Production signing\nA separately labelled production release will be published only after SignPath signing and Authenticode verification succeed. This preview does not replace that process.\n'
+            printf '## Trust and verification\nThe public certificate is included so its fingerprint can be checked independently. Do not trust or install it unless you have verified the certificate and installer hashes from a trusted source. Importing it locally can establish trust only for this certificate; it does not create a publicly trusted publisher identity or guarantee SmartScreen reputation.\n'
           } > release/windows/RELEASE-NOTES.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "::error::Release tag $TAG already exists; refusing to overwrite an existing release."
@@ -98,11 +120,12 @@ jobs:
           fi
 
       - name: Publish Windows desktop preview release
+        if: steps.verify.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.source.outputs.tag }}
           target_commitish: ${{ steps.source.outputs.source_sha }}
-          name: CodeForge ${{ steps.source.outputs.version }} — Windows Desktop Preview (Unsigned)
+          name: CodeForge ${{ steps.source.outputs.version }} — Windows Desktop Preview (Self-Signed)
           draft: false
           prerelease: true
           make_latest: false
@@ -113,9 +136,11 @@ jobs:
             release/windows/SHA256-Windows.txt
             release/windows/BUILD-METADATA.txt
             release/windows/WINDOWS-SIGNING-METADATA.txt
-            release/windows/UNSIGNED-PREVIEW-WARNING.txt
+            release/windows/SELF-SIGNED-PREVIEW-WARNING.txt
+            release/windows/CodeForge-Windows-Certificate.cer
 
       - name: Verify public preview release and download
+        if: steps.verify.outputs.publish == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,12 +150,14 @@ jobs:
           gh release view "$TAG" --json isDraft,isPrerelease,assets > release/windows/published-release.json
           jq -e '.isDraft == false and .isPrerelease == true and
             any(.assets[]; .name == "CodeForge-Setup-Windows.exe" and .size > 0) and
-            any(.assets[]; .name == "SHA256-Windows.txt" and .size > 0)' \
+            any(.assets[]; .name == "SHA256-Windows.txt" and .size > 0) and
+            any(.assets[]; .name == "CodeForge-Windows-Certificate.cer" and .size > 0)' \
             release/windows/published-release.json >/dev/null
           mkdir -p release/windows/download-check
           gh release download "$TAG" --pattern CodeForge-Setup-Windows.exe --dir release/windows/download-check
           cmp release/windows/CodeForge-Setup-Windows.exe release/windows/download-check/CodeForge-Setup-Windows.exe
+          cmp release/windows/CodeForge-Windows-Certificate.cer release/windows/download-check/CodeForge-Windows-Certificate.cer
           EXPECTED="$(awk '{print $1}' release/windows/SHA256-Windows.txt)"
           ACTUAL="$(sha256sum release/windows/download-check/CodeForge-Setup-Windows.exe | awk '{print $1}')"
           test "$ACTUAL" = "$EXPECTED"
-          echo "Published and re-downloaded unsigned Windows preview $TAG; checksum matches." >> "$GITHUB_STEP_SUMMARY"
+          echo "Published and re-downloaded self-signed Windows preview $TAG; checksum and certificate fingerprint match." >> "$GITHUB_STEP_SUMMARY"

@@ -28,6 +28,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.13.1
+      - name: Verify Android WebView readiness contract
+        run: node scripts/verify-android-webview.mjs
+      - name: Verify hosted CodeForge routes and assets
+        run: node scripts/verify-hosted-app.mjs
+      - name: Run hosted route regression tests
+        run: node --test scripts/verify-hosted-app.test.mjs
       - name: Pin npm to 11.19.0 for peer-graph stability
         run: npm install --global npm@11.19.0
       - uses: actions/setup-java@v4

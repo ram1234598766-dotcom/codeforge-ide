@@ -6,6 +6,12 @@ on:
       - "apps/web/src/main.tsx"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
+      - "apps/mobile/App.tsx"
+      - "apps/web/src/styles.css"
+      - "scripts/android-install-smoke.sh"
+      - "scripts/verify-android-webview.mjs"
+      - "scripts/verify-hosted-app.mjs"
+      - "scripts/verify-hosted-app.test.mjs"
       - ".github/workflows/native-shells-ci.yml"
       - ".github/workflows/publish-versioned-release.yml"
       - ".github/workflows/android-apk.yml"
@@ -23,6 +29,12 @@ on:
       - "apps/web/src/main.tsx"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
+      - "apps/mobile/App.tsx"
+      - "apps/web/src/styles.css"
+      - "scripts/android-install-smoke.sh"
+      - "scripts/verify-android-webview.mjs"
+      - "scripts/verify-hosted-app.mjs"
+      - "scripts/verify-hosted-app.test.mjs"
       - ".github/workflows/native-shells-ci.yml"
       - ".github/workflows/publish-versioned-release.yml"
       - ".github/workflows/android-apk.yml"
@@ -58,5 +70,9 @@ jobs:
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
       - name: Test D1 migrations on a disposable SQLite fixture
         run: python3 scripts/test-d1-migrations.py
+      - name: Verify Android WebView readiness contract
+        run: node scripts/verify-android-webview.mjs
+      - name: Run hosted route regression tests
+        run: node --test scripts/verify-hosted-app.test.mjs
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs
