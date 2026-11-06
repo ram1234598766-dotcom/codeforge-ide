@@ -97,25 +97,25 @@ jobs:
           cat release/android/SHA256-Android.txt release/windows/SHA256-Windows.txt > release/SHA256SUMS.txt
 
           cat > release/RELEASE-NOTES.md <<'EOF'
-# CodeForge v1.0.26 — UNSIGNED preview release
+          # CodeForge v1.0.26 — UNSIGNED preview release
 
-**Both installers in this release are intentionally unsigned.**
-The Android APK has no package signature and cannot be installed by Android as published. It is provided for inspection/testing only until it is signed with an app certificate. The Windows EXE has no Authenticode signature and may show an unknown-publisher or SmartScreen warning.
+          **Both installers in this release are intentionally unsigned.**
+          The Android APK has no package signature and cannot be installed by Android as published. It is provided for inspection/testing only until it is signed with an app certificate. The Windows EXE has no Authenticode signature and may show an unknown-publisher or SmartScreen warning.
 
-## Downloads
-- Android package: CodeForge.apk — version code 26, package com.codeforge.ide.
-- Windows installer: CodeForge-Setup-Windows.exe — NSIS installer.
+          ## Downloads
+          - Android package: CodeForge.apk — version code 26, package com.codeforge.ide.
+          - Windows installer: CodeForge-Setup-Windows.exe — NSIS installer.
 
-## Feature status
-The current desktop and Android shells load the hosted CodeForge workspace. Native Node.js, Python, Linux terminal, and autonomous test-and-repair capabilities are not included in this preview build.
+          ## Feature status
+          The current desktop and Android shells load the hosted CodeForge workspace. Native Node.js, Python, Linux terminal, and autonomous test-and-repair capabilities are not included in this preview build.
 
-## Build provenance
-- Source commit: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b
-- Production installer workflow run: 42230415496
-- Release tag: v1.0.26
+          ## Build provenance
+          - Source commit: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b
+          - Production installer workflow run: 42230415496
+          - Release tag: v1.0.26
 
-## SHA-256 checksums
-EOF
+          ## SHA-256 checksums
+          EOF
           cat release/SHA256SUMS.txt >> release/RELEASE-NOTES.md
 
       - name: Ensure this is the expected CodeForge release tag
