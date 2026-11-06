@@ -94,7 +94,7 @@ assert.match(publisher, /ANDROID_SIGNING_CERT_SHA256/);
 assert.match(publisher, /sha256sum -c/);
 assert.match(publisher, /apksigner.*verify/);
 assert.match(publisher, /PACKAGE=com\.codeforge\.ide/);
-assert.match(publisher, /workflow_run\.run_id/);
+assert.match(publisher, /workflow_run\.id/);
 assert.match(publisher, /draft: true/);
 assert.match(publisher, /make_latest: true/);
 assert.match(publisher, /Prevent out-of-order release publication/);
