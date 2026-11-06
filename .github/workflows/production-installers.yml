@@ -73,11 +73,10 @@ jobs:
             $missing += 'main-branch-only-signing'
           }
           if ($missing.Count -gt 0) {
-            "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Host "::notice::Windows installer will remain unsigned; SignPath signing is unavailable or not permitted for this ref. Missing: $($missing -join ', ')"
-          } else {
-            "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "::error::Windows production signing requires an approved SignPath project, trusted release policy, and all required GitHub secrets/variables. Missing: $($missing -join ', ')"
+            throw "Refusing to build or stage a Windows production installer without durable SignPath signing."
           }
+          "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Upload unsigned installer to GitHub for SignPath
         id: upload-unsigned-windows-installer
         if: steps.windows-signing.outputs.configured == 'true'
@@ -149,48 +148,6 @@ jobs:
             "NOT_BEFORE=$($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o'))",
             "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
           ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
-      - name: Create a self-signed Windows code-signing certificate
-        if: steps.windows-signing.outputs.configured != 'true'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=CodeForge Self-Signed Publisher" -CertStoreLocation "Cert:\CurrentUser\My" -KeyAlgorithm RSA -KeyLength 3072 -HashAlgorithm SHA256 -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codeforge-self-signed.pfx"
-          $pfxPassword = [Guid]::NewGuid().ToString("N")
-          $securePassword = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
-          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
-          Export-Certificate -Cert $cert -FilePath "release/CodeForge-Windows-Certificate.cer" -Type CERT -Force | Out-Null
-          $certificateFileHash = (Get-FileHash "release/CodeForge-Windows-Certificate.cer" -Algorithm SHA256).Hash.ToLowerInvariant()
-          Import-Certificate -FilePath "release/CodeForge-Windows-Certificate.cer" -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
-          Import-Certificate -FilePath "release/CodeForge-Windows-Certificate.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
-          $sdkRoot = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) "Windows Kits/10/bin"
-          $signtool = Get-ChildItem (Join-Path $sdkRoot "*/x64/signtool.exe") -ErrorAction SilentlyContinue |
-            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
-            Select-Object -First 1
-          if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
-          & $signtool.FullName sign /fd SHA256 /f $pfxPath /p $pfxPassword /tr http://timestamp.digicert.com /td SHA256 release/CodeForge-Setup-Windows.exe
-          if ($LASTEXITCODE -ne 0) { throw "Self-signed Authenticode signing failed." }
-          & $signtool.FullName verify /pa /all /v release/CodeForge-Setup-Windows.exe
-          if ($LASTEXITCODE -ne 0) { throw "Self-signed Authenticode verification failed." }
-          $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
-          if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate) {
-            throw "Self-signed Authenticode status was not Valid: $($signature.Status)"
-          }
-          if ($signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) {
-            throw "The installer signer does not match the generated CodeForge certificate."
-          }
-          @(
-            "SIGNING=self-signed",
-            "SIGNATURE_STATUS=$($signature.Status)",
-            "TRUST=not-publicly-trusted",
-            "SIGNING_PROVIDER=CodeForge self-signed preview",
-            "SUBJECT=$($signature.SignerCertificate.Subject)",
-            "THUMBPRINT=$($signature.SignerCertificate.Thumbprint.ToUpperInvariant())",
-            "CERT_FILE_SHA256=$certificateFileHash",
-            "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
-          ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
-          Remove-Item -Path $pfxPath -Force
-          Remove-Item -Path "Cert:\CurrentUser\My\$($cert.Thumbprint)" -Force
       - name: Record Windows build metadata and checksum
         shell: pwsh
         run: |
@@ -203,11 +160,16 @@ jobs:
             throw "Windows Authenticode verification failed: $($signature.Status)"
           }
           $signing = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING=*" } | Select-Object -First 1
-          if ($signing -notin @("SIGNING=durable", "SIGNING=self-signed")) {
-            throw "Windows installer signing metadata is not an approved signed state: $signing"
+          if ($signing -ne "SIGNING=durable") {
+            throw "A durable, publicly trusted SignPath-signed Windows installer is required; preview/self-signed output is not a production release."
           }
-          if ($signing -eq "SIGNING=self-signed" -and -not (Test-Path release/CodeForge-Windows-Certificate.cer)) {
-            throw "The public self-signed Windows certificate is missing from the release artifact."
+          $signingProvider = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING_PROVIDER=*" } | Select-Object -First 1
+          $signatureStatus = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNATURE_STATUS=*" } | Select-Object -First 1
+          if ($signingProvider -ne "SIGNING_PROVIDER=SignPath Foundation" -or $signatureStatus -ne "SIGNATURE_STATUS=Valid") {
+            throw "Windows signing provider or Authenticode verification state is not approved for production."
+          }
+          if (-not (Test-Path release/CodeForge-Windows-Certificate.cer)) {
+            throw "The public SignPath signer certificate is missing from the production artifact."
           }
           $hash = (Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows.txt -Encoding ascii -NoNewline
