@@ -18,31 +18,78 @@ const LOAD_TIMEOUT_MS = 30000;
 const WEBVIEW_READY_SCRIPT = `
 (function () {
   var origin = 'https://codeforge-ide.vasudevaya.workers.dev';
-  if (window.location.origin !== origin || !(window.location.pathname === '/app' || window.location.pathname.indexOf('/app/') === 0)) {
+  var isCodeForgeAppRoute = window.location.origin === origin
+    && (window.location.pathname === '/app' || window.location.pathname.indexOf('/app/') === 0);
+  if (!isCodeForgeAppRoute) return true;
+
+  var startedAt = Date.now();
+  var timeoutReported = false;
+
+  function postNativeMessage(type) {
+    if (type === 'codeforge-ready') {
+      if (window.__CODEFORGE_APP_READY_REPORTED) return true;
+      if (!window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') return false;
+      window.__CODEFORGE_APP_READY_REPORTED = true;
+    } else {
+      if (timeoutReported || !window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') return false;
+      timeoutReported = true;
+    }
+
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: type,
+      path: window.location.pathname
+    }));
     return true;
   }
-  var startedAt = Date.now();
+
   function checkReady() {
     var readyMarker = document.querySelector('[data-codeforge-app-ready="true"]');
     var appRoot = document.querySelector('#root');
-    var appRendered = readyMarker || (appRoot && appRoot.children.length > 0);
+    var appRendered = Boolean(readyMarker || (appRoot && appRoot.children.length > 0));
+
     if (document.readyState === 'complete' && appRendered) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'codeforge-ready',
-        path: window.location.pathname
-      }));
-      return;
+      return postNativeMessage('codeforge-ready');
     }
-    if (Date.now() - startedAt >= 15000) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'codeforge-timeout',
-        path: window.location.pathname
-      }));
-      return;
+
+    if (Date.now() - startedAt >= 20000) {
+      postNativeMessage('codeforge-timeout');
+      return timeoutReported;
     }
-    window.setTimeout(checkReady, 250);
+
+    return false;
   }
-  checkReady();
+
+  function startReadinessWatch() {
+    var observedRoot = document.documentElement || document;
+    var observer = null;
+
+    if (typeof MutationObserver === 'function') {
+      observer = new MutationObserver(function () {
+        if (checkReady() && observer) observer.disconnect();
+      });
+      observer.observe(observedRoot, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+    }
+
+    function poll() {
+      if (checkReady()) {
+        if (observer) observer.disconnect();
+        return;
+      }
+      window.setTimeout(poll, 250);
+    }
+
+    poll();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startReadinessWatch, { once: true });
+  } else {
+    startReadinessWatch();
+  }
   return true;
 })();
 true;
@@ -160,7 +207,8 @@ export default function App() {
           setFailed(false);
         }}
         onLoadEnd={() => {
-          // The SPA readiness handshake, not document load alone, marks the app ready.
+          // Retry after the main document load so the native bridge and SPA root are both available.
+          webView.current?.injectJavaScript(WEBVIEW_READY_SCRIPT);
         }}
         onError={failMainDocument}
         onHttpError={event => {
