@@ -173,9 +173,13 @@ assert.match(androidPreview, /trap 'rm -f "\$KEYSTORE_PATH" release\/CodeForge-a
 assert.doesNotMatch(androidPreview, /CodeForge-unaligned\\.apk|validity 10000/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
-assert.match(publisher, /ANDROID_SIGNING.*!= "durable"/);
-assert.doesNotMatch(publisher, /WINDOWS_SIGNING|osslsigncode|CodeForge-Setup-Windows/);
+assert.match(publisher, /needs: \[verify-windows, verify-android\]/, 'A public release must wait for both signed-installer verification jobs.');
+assert.match(publisher, /SIGNING_PROVIDER=SignPath Foundation/);
+assert.match(publisher, /SIGNATURE_STATUS=Valid/);
+assert.match(publisher, /WINDOWS_SIGNING_CERT_THUMBPRINT/);
 assert.match(publisher, /ANDROID_SIGNING_CERT_SHA256/);
+assert.match(publisher, /Get-AuthenticodeSignature release\/windows\/CodeForge-Setup-Windows\.exe/);
+assert.match(publisher, /signtool\.FullName verify \/pa \/all \/v/);
 assert.match(publisher, /sha256sum -c/);
 assert.match(publisher, /apksigner.*verify/);
 assert.match(publisher, /PACKAGE=com\.codeforge\.ide/);
@@ -185,8 +189,9 @@ assert.match(publisher, /make_latest: true/);
 assert.match(publisher, /Prevent out-of-order release publication/);
 assert.match(publisher, /check-release-sequence\.mjs/);
 assert.match(publisher, /steps\.sequence\.outputs\.release_ready == 'true'/);
-assert.match(publisher, /Verify published APK download/);
-assert.doesNotMatch(publisher, /CodeForge-Setup-Windows\.exe/);
+assert.match(publisher, /Verify public paired release downloads/);
+assert.match(publisher, /CodeForge-Setup-Windows\.exe/);
+assert.match(publisher, /CodeForge\.apk/);
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 for (const [name, workflow] of [
@@ -286,24 +291,24 @@ assert.doesNotMatch(installers, /name: Stage unsigned APK when durable signing i
 assert.ok(installers.includes("The Android production signing secrets are required"));
 assert.ok(installers.includes("ANDROID_KEYSTORE_BASE64") && installers.includes("ANDROID_SIGNING_CERT_SHA256"));
 
-const windowsSelfSigning = installers.slice(
-  installers.indexOf("name: Create a self-signed Windows code-signing certificate"),
-  installers.indexOf("name: Record Windows build metadata and checksum"),
+const windowsSigningGate = installers.slice(
+  installers.indexOf("name: Detect SignPath Foundation signing configuration"),
+  installers.indexOf("name: Upload unsigned installer to GitHub for SignPath"),
 );
-assert.ok(windowsSelfSigning.includes("New-SelfSignedCertificate -Type CodeSigningCert"));
-assert.ok(windowsSelfSigning.includes("Export-Certificate"), "Only the public Windows certificate may be exported.");
-assert.ok(windowsSelfSigning.includes("signtool") && windowsSelfSigning.includes("sign /fd SHA256"));
-assert.ok(windowsSelfSigning.includes("Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe"));
-assert.ok(windowsSelfSigning.includes("SIGNING=self-signed"));
-assert.doesNotMatch(windowsSelfSigning, /actions\/upload-artifact|\.pfx.*release/);
-assert.ok(desktopPreviewPublisher.includes("cmp release/windows/CodeForge-Setup-Windows.exe"));
-assert.ok(desktopPreviewPublisher.includes("WINDOWS_JOB_CONCLUSION"), "Windows preview publication must be gated by the Windows job, not the overall Android+Windows workflow result.");
-assert.ok(desktopPreviewPublisher.includes("CERT_FILE_SHA256"), "The public Windows certificate file hash must be checked against signing metadata.");
-assert.ok(installers.includes("CERT_FILE_SHA256=$certificateFileHash"), "Windows signing metadata must bind the public certificate file hash.");
+assert.ok(windowsSigningGate.includes("SIGNPATH_API_TOKEN"));
+assert.ok(windowsSigningGate.includes("Refusing to build or stage a Windows production installer without durable SignPath signing."), "Windows production signing must fail closed when SignPath is missing.");
+assert.doesNotMatch(installers, /New-SelfSignedCertificate|SIGNING=self-signed/, "Production Windows installers must not fall back to self-signed certificates.");
+assert.ok(installers.includes("SIGNING_PROVIDER=SignPath Foundation"));
+assert.ok(installers.includes("SIGNATURE_STATUS=Valid"));
+assert.ok(installers.includes("CERT_FILE_SHA256=$certificateFileHash"), "Windows signing metadata must bind the public SignPath certificate file hash.");
+assert.ok(installers.includes("signtool") && installers.includes("verify /pa /all /v"));
 assert.ok(legacyUnsignedPublisher.includes("if: ${{ false }}"), "The legacy unsigned release publisher must be disabled.");
 assert.ok(legacyUnsignedPublisher.includes("contents: read") && !legacyUnsignedPublisher.includes("contents: write"));
-assert.ok(versionedReleasePublisher.includes("SIGNING=durable"), "The public Android release publisher must require durable signing.");
-assert.ok(versionedReleasePublisher.includes("ANDROID_SIGNING_CERT_SHA256"), "The public Android release publisher must verify the production signer fingerprint.");
+assert.ok(versionedReleasePublisher.includes("SIGNING=durable"), "The public paired publisher must require durable signing.");
+assert.ok(versionedReleasePublisher.includes("SIGNING_PROVIDER=SignPath Foundation"), "The paired publisher must verify the Windows signing provider.");
+assert.ok(versionedReleasePublisher.includes("ANDROID_SIGNING_CERT_SHA256"), "The paired publisher must verify the Android signer fingerprint.");
+assert.ok(desktopPreviewPublisher.includes("if: ${{ false }}"), "Standalone Windows preview release publication must be disabled.");
+assert.ok(!desktopPreviewPublisher.includes("contents: write") && !desktopPreviewPublisher.includes("workflow_run:"), "The retired Windows preview workflow must not publish standalone EXE releases.");
 
 
 const mobileApp = read("../apps/mobile/App.tsx");
@@ -339,34 +344,16 @@ assert.match(home, /const androidDownloadUrl: string \| null = null/);
 
 
 
-assert.ok(desktopPreviewPublisher.includes('workflow_run:'), 'Desktop preview releases must be triggered by completed production installer runs.');
-assert.ok(!desktopPreviewPublisher.includes('  push:'), 'Desktop preview publication must be tied to completed installer runs only.');
-assert.match(installers, /^on:\s*push:\s*branches: \[main\]\s*workflow_dispatch:/m, 'Production installers must run on every main update so each update can produce a Windows preview.');
-assert.ok(desktopPreviewPublisher.includes('workflows: ["CodeForge production installers"]'));
-assert.ok(desktopPreviewPublisher.includes("if: github.event.workflow_run.head_branch == 'main'"), 'Desktop preview publisher must be restricted to main installer runs.');
-assert.ok(desktopPreviewPublisher.includes('.status == "completed"'), 'Desktop preview publisher must require a completed upstream run.');
-assert.ok(desktopPreviewPublisher.includes('WINDOWS_JOB_CONCLUSION') && desktopPreviewPublisher.includes('!= "success"'), 'Desktop preview publisher must reject a failed Windows build even if another matrix job succeeds.');
-assert.ok(desktopPreviewPublisher.includes("github.event.workflow_run.head_branch == 'main'"));
-assert.ok(desktopPreviewPublisher.includes('.head_sha == $sha'), 'The upstream artifact run must match the exact source SHA.');
-assert.ok(desktopPreviewPublisher.includes('COMMIT=$SOURCE_SHA'));
-assert.ok(desktopPreviewPublisher.includes('WORKFLOW_RUN_ID=$UPSTREAM_RUN_ID'));
-assert.ok(desktopPreviewPublisher.includes('SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}'));
-assert.ok(desktopPreviewPublisher.includes('UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}'));
-assert.ok(desktopPreviewPublisher.includes('jq -e'));
-assert.ok(desktopPreviewPublisher.includes('--arg sha "$SOURCE_SHA"'));
-assert.ok(!desktopPreviewPublisher.includes('EVENT_NAME'));
-assert.ok(!desktopPreviewPublisher.includes('PUSH_BASE_SHA'));
-assert.ok(desktopPreviewPublisher.includes('sha256sum -c SHA256-Windows.txt'));
-assert.ok(desktopPreviewPublisher.includes('prerelease: true'));
-assert.ok(desktopPreviewPublisher.includes('make_latest: false'));
-assert.ok(desktopPreviewPublisher.includes('desktop-preview'));
-assert.ok(desktopPreviewPublisher.includes('SIGNING=self-signed'));
-assert.ok(desktopPreviewPublisher.includes('CodeForge-Windows-Certificate.cer'));
-assert.ok(desktopPreviewPublisher.includes('self-signed') && desktopPreviewPublisher.includes('SmartScreen'));
-assert.ok(desktopPreviewPublisher.includes('SELF-SIGNED PREVIEW'));
-assert.ok(desktopPreviewPublisher.includes('gh release download'));
-assert.ok(desktopPreviewPublisher.includes('cmp release/windows/CodeForge-Setup-Windows.exe'));
-assert.ok(desktopPreviewPublisher.includes('test "$ACTUAL" = "$EXPECTED"'));
-assert.ok(desktopPreviewPublisher.includes('contents: write'));
+assert.match(installers, /^on:\s*push:\s*branches: \[main\]\s*workflow_dispatch:/m, 'Production installers must run on main and manual dispatch only.');
+assert.ok(publisher.includes('workflows: ["CodeForge production installers"]'));
+assert.ok(publisher.includes('needs: [verify-windows, verify-android]'), 'The public release must depend on both signer-verification jobs.');
+assert.ok(publisher.includes('github.event.workflow_run.head_sha'), 'The paired release must bind to the exact upstream source SHA.');
+assert.ok(publisher.includes('CodeForge-Setup-Windows.exe') && publisher.includes('CodeForge.apk'), 'The public release must contain both installer formats.');
+assert.ok(publisher.includes('cmp release/windows/CodeForge-Setup-Windows.exe'));
+assert.ok(publisher.includes('cmp release/android/CodeForge.apk'));
+assert.ok(publisher.includes('test "$ACTUAL_WINDOWS" = "$EXPECTED_WINDOWS"'));
+assert.ok(publisher.includes('test "$ACTUAL_ANDROID" = "$EXPECTED_ANDROID"'));
+assert.ok(desktopPreviewPublisher.includes('if: ${{ false }}'), 'Standalone self-signed Windows preview releases must be disabled.');
+assert.ok(!desktopPreviewPublisher.includes('workflow_run:') && !desktopPreviewPublisher.includes('contents: write'), 'The retired Windows preview workflow must have no publication trigger or write permission.');
 
 console.log('Release signing gates, exact-SHA checks, production probes, and sequence policy passed.');
