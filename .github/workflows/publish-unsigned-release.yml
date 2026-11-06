@@ -36,7 +36,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Download Android build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: codeforge-android-apk
           path: release/android
@@ -45,7 +45,7 @@ jobs:
           run-id: ${{ env.SOURCE_RUN_ID }}
 
       - name: Download Windows build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: codeforge-windows-installer
           path: release/windows
