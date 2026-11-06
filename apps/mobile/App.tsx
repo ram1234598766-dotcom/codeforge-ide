@@ -24,7 +24,9 @@ const WEBVIEW_READY_SCRIPT = `
   var startedAt = Date.now();
   function checkReady() {
     var readyMarker = document.querySelector('[data-codeforge-app-ready="true"]');
-    if (document.readyState === 'complete' && readyMarker) {
+    var appRoot = document.querySelector('#root');
+    var appRendered = readyMarker || (appRoot && appRoot.children.length > 0);
+    if (document.readyState === 'complete' && appRendered) {
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'codeforge-ready',
         path: window.location.pathname
