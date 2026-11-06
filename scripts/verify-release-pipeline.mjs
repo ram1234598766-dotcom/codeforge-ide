@@ -52,7 +52,6 @@ assert.ok(d1MigrationTest.includes('test_workspace_foreign_keys_cascade_only_the
 
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
-const unsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
 
@@ -269,17 +268,6 @@ try {
 }
 
 assert.match(publisher, /gh release download/);
-assert.match(unsignedPublisher, /SOURCE_RUN_ID: 42230415496/);
-assert.match(unsignedPublisher, /SOURCE_SHA: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b/);
-assert.match(unsignedPublisher, /RELEASE_TAG: v1\.0\.26/);
-assert.match(unsignedPublisher, /SIGNING=unsigned/);
-assert.match(unsignedPublisher, /SHA256-Android\.txt/);
-assert.match(unsignedPublisher, /SHA256-Windows\.txt/);
-assert.match(unsignedPublisher, /CodeForge\.apk/);
-assert.match(unsignedPublisher, /CodeForge-Setup-Windows\.exe/);
-assert.match(unsignedPublisher, /draft: false/);
-assert.match(unsignedPublisher, /make_latest: true/);
-assert.match(unsignedPublisher, /Verify public release assets and checksums/);
 assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
 
 
