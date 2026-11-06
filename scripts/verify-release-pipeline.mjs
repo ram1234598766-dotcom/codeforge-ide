@@ -14,6 +14,33 @@ const releasePolicy = read('../.github/workflows/release-policy.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
 const deploy = read('../.github/workflows/deploy-worker.yml');
+
+const d1MigrationTest = read('../scripts/test-d1-migrations.py');
+
+assert.match(deploy, /^on:\\s*\\n\\s+workflow_dispatch:/m, 'Production deployment must be manual-only.');
+assert.ok(deploy.includes("if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"), 'Production deployment must run from main only.');
+assert.ok(deploy.includes('SOURCE_REF: ${{ github.ref }}'), 'Deployment must capture the selected source ref.');
+assert.ok(deploy.includes('test "$SOURCE_REF" = "refs/heads/main"'), 'Deployment must reject non-main source refs.');
+assert.doesNotMatch(deploy, /^\\s{2}(?:push|pull_request):/m, 'Production deployment must not run on push or PR close.');
+assert.match(deploy, /confirm_production_deploy:[\\s\\S]*?required: true/, 'Production deployment must require an explicit confirmation input.');
+assert.match(deploy, /test "\\$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"/, 'Production deployment must reject an unconfirmed dispatch.');
+assert.match(deploy, /apply_d1_migrations:[\\s\\S]*?default: "false"/, 'D1 migrations must default to disabled.');
+assert.match(deploy, /confirm_d1_migrations:[\\s\\S]*?required: false/, 'D1 migration confirmation must be an explicit optional input.');
+assert.match(deploy, /test "\\$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"/, 'D1 migrations must require a separate explicit confirmation.');
+assert.match(deploy, /Apply D1 migrations[\\s\\S]*?if: \\$\\{\\{ inputs\\.apply_d1_migrations == 'true' \\}\\}/, 'Initial D1 migration must be opt-in.');
+assert.match(deploy, /Apply workspace search revision migration[\\s\\S]*?if: \\$\\{\\{ inputs\\.apply_d1_migrations == 'true' \\}\\}/, 'Workspace revision migration must be opt-in.');
+assert.doesNotMatch(deploy, /wrangler@4 secret put/, 'Deployment workflow must not mutate Worker secrets.');
+assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
+for (const migrationPath of [
+  'migrations/0005_code_change_requests.sql',
+  'migrations/0006_workspace_search_revisions.sql',
+]) {
+  assert.ok(releasePolicy.includes(migrationPath), 'D1 migration changes must trigger the migration fixture workflow: ' + migrationPath);
+  assert.ok(d1MigrationTest.includes(migrationPath), 'Disposable D1 fixture must exercise ' + migrationPath);
+}
+assert.ok(releasePolicy.includes('scripts/test-d1-migrations.py'), 'Changes to the disposable D1 fixture must trigger the migration safety workflow.');
+assert.match(d1MigrationTest, /test_migrations_are_rerunnable_without_losing_existing_data_or_revision_progress/);
+assert.match(d1MigrationTest, /test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace/);
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const unsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
@@ -81,6 +108,16 @@ assert.ok(native.includes("codeforge-desktop.exe"));
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /Validate Android smoke script syntax/);
 assert.ok(native.includes("bash -n scripts/android-install-smoke.sh"));
+
+const diskCleanupStep = native.indexOf("name: Reclaim build-only disk space before emulator provisioning");
+const emulatorSmokeStep = native.indexOf("name: Install and launch Android app in disposable emulator");
+assert.ok(diskCleanupStep >= 0 && diskCleanupStep < emulatorSmokeStep, "Android build-only disk cleanup must run before emulator provisioning.");
+assert.ok(native.includes('test -s release/CodeForge-debug.apk'), "The staged debug APK must survive emulator disk cleanup.");
+assert.ok(native.includes('test -s release/CodeForge-unsigned.apk'), "The staged release APK must survive emulator disk cleanup.");
+assert.ok(native.includes('rm -rf "$HOME/.gradle/caches"'), "Gradle caches must be removed after APK staging to free emulator disk space.");
+assert.ok(native.includes('rm -rf "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms" "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"'), "Build-only Android SDK packages must be removed before the emulator action reinstalls its required packages.");
+assert.ok(native.includes('AVAILABLE_KB') && native.includes('5242880'), "Android emulator provisioning must fail with a clear diagnostic when less than 5 GiB is available.");
+assert.ok(native.includes('df -h /'), "Android emulator CI must report filesystem usage before and after cleanup.");
 assert.ok(native.includes("script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk"));
 assert.match(native, /Verify Android permission allowlist/);
 assert.ok(native.includes("node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt"));

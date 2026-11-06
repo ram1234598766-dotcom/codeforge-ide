@@ -14,6 +14,9 @@ on:
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
       - "scripts/check-release-sequence.mjs"
+      - "migrations/0005_code_change_requests.sql"
+      - "migrations/0006_workspace_search_revisions.sql"
+      - "scripts/test-d1-migrations.py"
   push:
     branches: [main]
     paths:
@@ -28,6 +31,9 @@ on:
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
       - "scripts/check-release-sequence.mjs"
+      - "migrations/0005_code_change_requests.sql"
+      - "migrations/0006_workspace_search_revisions.sql"
+      - "scripts/test-d1-migrations.py"
 
 permissions:
   contents: read
@@ -50,5 +56,7 @@ jobs:
       - name: Parse GitHub Actions workflow YAML
         run: |
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
+      - name: Test D1 migrations on a disposable SQLite fixture
+        run: python3 scripts/test-d1-migrations.py
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs
