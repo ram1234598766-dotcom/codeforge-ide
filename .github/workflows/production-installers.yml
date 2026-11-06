@@ -208,11 +208,24 @@ jobs:
           ANDROID_SIGNING_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          if [[ -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PASSWORD" || -z "$ANDROID_KEY_ALIAS" || -z "$ANDROID_KEY_PASSWORD" || -z "$ANDROID_SIGNING_CERT_SHA256" ]]; then
+          missing=()
+          [[ -n "$ANDROID_KEYSTORE_BASE64" ]] || missing+=("ANDROID_KEYSTORE_BASE64 secret")
+          [[ -n "$ANDROID_KEYSTORE_PASSWORD" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD secret")
+          [[ -n "$ANDROID_KEY_ALIAS" ]] || missing+=("ANDROID_KEY_ALIAS secret")
+          [[ -n "$ANDROID_KEY_PASSWORD" ]] || missing+=("ANDROID_KEY_PASSWORD secret")
+          [[ -n "$ANDROID_SIGNING_CERT_SHA256" ]] || missing+=("ANDROID_SIGNING_CERT_SHA256 repository variable")
+          if (("${#missing[@]}" > 0)); then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Android APK will remain unsigned; production release is blocked until the durable keystore, alias, passwords, and expected certificate fingerprint are configured."
+            echo "::notice::Android production signing is unavailable. Missing configuration names: ${missing[*]}. Values are not printed."
+            {
+              echo "## Android production signing configuration"
+              echo
+              echo "Missing names: ${missing[*]}"
+              echo "No credential values are printed or exposed."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "All required Android production signing configuration names are present."
           fi
       - name: Install Expo dependencies
         working-directory: apps/mobile
@@ -345,7 +358,7 @@ jobs:
           {
             echo "## Android signing status"
             echo
-            echo "The APK was built, but it is not marked as a production-signed artifact. The versioned release publisher will not publish it."
+            echo "The APK was built, but it is not marked as a production-signed artifact. The Android-only versioned release publisher will not publish it."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Record Android build metadata and checksum
         shell: bash
