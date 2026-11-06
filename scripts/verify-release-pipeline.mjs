@@ -200,6 +200,9 @@ assert.match(publisher, /verify-android-permissions\.mjs/, 'The release publishe
 assert.match(publisher, /apksigner" verify --verbose --Werr --print-certs CodeForge\.apk/, 'The release publisher must independently verify the APK signature and signer certificate.');
 assert.match(installers, /zipalign" -c 4 release\/CodeForge\.apk/, 'Production APK must remain aligned after it is signed.');
 assert.match(installers, /apksigner" verify --verbose --Werr --print-certs release\/CodeForge\.apk/, 'Production APK must pass strict apksigner verification.');
+assert.match(installers, /name: Install and launch production-signed APK in disposable emulator/, 'The actual production-signed APK must install and launch before it can be uploaded.');
+assert.match(installers, /reactivecircus\/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
+assert.ok(installers.includes('script: bash scripts/android-install-smoke.sh release/CodeForge.apk'), 'The final signed Android APK must pass the hosted WebView readiness smoke test.');
 assert.match(installers, /on:\s*push:\s*branches: \[main\]/, 'Every update pushed to main must trigger the paired installer build pipeline.');
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
