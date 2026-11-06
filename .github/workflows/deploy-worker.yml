@@ -107,4 +107,5 @@ jobs:
       - name: Verify production hosted CodeForge routes, API guard, and assets
         env:
           CODEFORGE_BASE_URL: https://codeforge-ide.vasudevaya.workers.dev
+          REQUIRE_NO_STORE_HEADERS: 'true'
         run: node scripts/verify-hosted-app.mjs

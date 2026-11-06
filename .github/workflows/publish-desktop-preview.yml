@@ -17,7 +17,7 @@ concurrency:
 jobs:
   publish:
     name: Publish self-signed Windows preview
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    if: github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -39,15 +39,21 @@ jobs:
             --arg sha "$SOURCE_SHA" \
             '.path == ".github/workflows/production-installers.yml" and
              .status == "completed" and
-             .conclusion == "success" and
              .head_branch == "main" and
              .head_sha == $sha' <<< "$RUN_JSON" >/dev/null
           RUN_NUMBER="$(jq -r '.run_number' <<< "$RUN_JSON")"
+          JOBS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$UPSTREAM_RUN_ID/jobs?per_page=100")"
+          WINDOWS_JOB_CONCLUSION="$(jq -r '.jobs[] | select(.name == "Build Windows desktop installer") | .conclusion' <<< "$JOBS_JSON")"
+          if [[ "$WINDOWS_JOB_CONCLUSION" != "success" ]]; then
+            echo "::error::The Windows installer job did not complete successfully; no preview can be published."
+            exit 1
+          fi
           test "$RUN_NUMBER" -gt 0
           {
             echo "source_sha=$SOURCE_SHA"
             echo "upstream_run_id=$UPSTREAM_RUN_ID"
             echo "run_number=$RUN_NUMBER"
+            echo "windows_job_conclusion=$WINDOWS_JOB_CONCLUSION"
             echo "version=1.0.$RUN_NUMBER"
             echo "tag=v1.0.$RUN_NUMBER-desktop-preview-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           } >> "$GITHUB_OUTPUT"
@@ -101,6 +107,10 @@ jobs:
           openssl x509 -inform DER -in release/windows/CodeForge-Windows-Certificate.cer -out release/windows/CodeForge-Windows-Certificate.pem
           CERT_THUMBPRINT="$(openssl x509 -in release/windows/CodeForge-Windows-Certificate.pem -noout -fingerprint -sha1 | sed -E 's/^.*=//; s/://g' | tr '[:lower:]' '[:upper:]')"
           EXPECTED_THUMBPRINT="$(sed -n 's/^THUMBPRINT=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          CERT_EXPECTED="$(sed -n 's/^CERT_FILE_SHA256=//p' release/windows/WINDOWS-SIGNING-METADATA.txt | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          CERT_ACTUAL="$(sha256sum release/windows/CodeForge-Windows-Certificate.cer | awk '{print $1}')"
+          test -n "$CERT_EXPECTED"
+          test "$CERT_ACTUAL" = "$CERT_EXPECTED"
           test -n "$CERT_THUMBPRINT"
           test "$CERT_THUMBPRINT" = "$EXPECTED_THUMBPRINT"
           osslsigncode verify -CAfile release/windows/CodeForge-Windows-Certificate.pem -in release/windows/CodeForge-Setup-Windows.exe

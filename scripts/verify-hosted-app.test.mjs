@@ -5,8 +5,8 @@ import { verifyHostedApp } from './verify-hosted-app.mjs';
 function buildFetch(overrides = {}) {
   const html = `<!doctype html><html><head><link rel="stylesheet" href="/assets/app-abc.css"></head><body><div id="root"></div><script type="module" src="/assets/app-abc.js"></script></body></html>`;
   const responses = new Map([
-    ['/', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8'}})],
-    ['/app', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8'}})],
+    ['/', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate'}})],
+    ['/app', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate'}})],
     ['/api/health', new Response(JSON.stringify({ok:true,database:'connected'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/config', new Response(JSON.stringify({url:'https://project.supabase.co',publishableKey:'sb_publishable_test'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/workspaces', new Response(JSON.stringify({error:'Authentication required'}), {status:401, headers:{'content-type':'application/json'}})],
@@ -28,6 +28,20 @@ test('verifies SPA, Android /app, API configuration, assets and auth guard', asy
   assert.equal(result.health.database,'connected');
   assert.equal(result.authGuard.status,401);
   assert.deepEqual(result.assets.map(asset=>asset.path).sort(), ['/assets/app-abc.css','/assets/app-abc.js']);
+});
+
+test('requires no-store HTML when validating a completed production deployment', async () => {
+  const html = '<!doctype html><html><body><div id="root"></div><script src="/assets/app-abc.js"></script><link rel="stylesheet" href="/assets/app-abc.css"></html>';
+  await assert.rejects(
+    verifyHostedApp({
+      baseUrl:'https://codeforge.example',
+      requireNoStoreHeaders:true,
+      fetchImpl:buildFetch({
+        '/app':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
+      })
+    }),
+    /\/app HTML must not be cached/
+  );
 });
 
 test('rejects a Worker health response with a disconnected database', async () => {

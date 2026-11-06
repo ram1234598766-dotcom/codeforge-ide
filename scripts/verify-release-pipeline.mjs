@@ -11,6 +11,8 @@ const native = read('../.github/workflows/native-shells-ci.yml');
 const mobileConfig = JSON.parse(read('../apps/mobile/app.json'));
 const workerCI = read('../.github/workflows/codeforge-worker-ci.yml');
 const releasePolicy = read('../.github/workflows/release-policy.yml');
+const legacyUnsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
+const versionedReleasePublisher = read('../.github/workflows/publish-versioned-release.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
 const deploy = read('../.github/workflows/deploy-worker.yml');
@@ -304,6 +306,14 @@ assert.ok(windowsSelfSigning.includes("Get-AuthenticodeSignature release/CodeFor
 assert.ok(windowsSelfSigning.includes("SIGNING=self-signed"));
 assert.doesNotMatch(windowsSelfSigning, /actions\/upload-artifact|\.pfx.*release/);
 assert.ok(desktopPreviewPublisher.includes("cmp release/windows/CodeForge-Setup-Windows.exe"));
+assert.ok(desktopPreviewPublisher.includes("WINDOWS_JOB_CONCLUSION"), "Windows preview publication must be gated by the Windows job, not the overall Android+Windows workflow result.");
+assert.ok(desktopPreviewPublisher.includes("CERT_FILE_SHA256"), "The public Windows certificate file hash must be checked against signing metadata.");
+assert.ok(installers.includes("CERT_FILE_SHA256=$certificateFileHash"), "Windows signing metadata must bind the public certificate file hash.");
+assert.ok(legacyUnsignedPublisher.includes("if: ${{ false }}"), "The legacy unsigned release publisher must be disabled.");
+assert.ok(legacyUnsignedPublisher.includes("contents: read") && !legacyUnsignedPublisher.includes("contents: write"));
+assert.ok(versionedReleasePublisher.includes("SIGNING=durable"), "The public Android release publisher must require durable signing.");
+assert.ok(versionedReleasePublisher.includes("ANDROID_SIGNING_CERT_SHA256"), "The public Android release publisher must verify the production signer fingerprint.");
+
 
 const mobileApp = read("../apps/mobile/App.tsx");
 assert.ok(mobileApp.includes("onHttpError"), "Android WebView must surface main-frame HTTP errors.");

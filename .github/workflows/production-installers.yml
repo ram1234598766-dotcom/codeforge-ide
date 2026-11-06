@@ -136,6 +136,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows Authenticode policy verification failed." }
           $certificatePath = Join-Path (Get-Location) "release/CodeForge-Windows-Certificate.cer"
           Export-Certificate -Cert $signature.SignerCertificate -FilePath $certificatePath -Type CERT -Force | Out-Null
+          $certificateFileHash = (Get-FileHash $certificatePath -Algorithm SHA256).Hash.ToLowerInvariant()
           @(
             "SIGNING=durable",
             "SIGNATURE_STATUS=$($signature.Status)",
@@ -144,6 +145,7 @@ jobs:
             "SUBJECT=$($signature.SignerCertificate.Subject)",
             "ISSUER=$($signature.SignerCertificate.Issuer)",
             "THUMBPRINT=$actualThumbprint",
+            "CERT_FILE_SHA256=$certificateFileHash",
             "NOT_BEFORE=$($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o'))",
             "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
           ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
@@ -158,6 +160,7 @@ jobs:
           $securePassword = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
           Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $securePassword | Out-Null
           Export-Certificate -Cert $cert -FilePath "release/CodeForge-Windows-Certificate.cer" -Type CERT -Force | Out-Null
+          $certificateFileHash = (Get-FileHash "release/CodeForge-Windows-Certificate.cer" -Algorithm SHA256).Hash.ToLowerInvariant()
           Import-Certificate -FilePath "release/CodeForge-Windows-Certificate.cer" -CertStoreLocation "Cert:\CurrentUser\Root" | Out-Null
           Import-Certificate -FilePath "release/CodeForge-Windows-Certificate.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPublisher" | Out-Null
           $sdkRoot = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) "Windows Kits/10/bin"
@@ -183,6 +186,7 @@ jobs:
             "SIGNING_PROVIDER=CodeForge self-signed preview",
             "SUBJECT=$($signature.SignerCertificate.Subject)",
             "THUMBPRINT=$($signature.SignerCertificate.Thumbprint.ToUpperInvariant())",
+            "CERT_FILE_SHA256=$certificateFileHash",
             "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
           ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
           Remove-Item -Path $pfxPath -Force
@@ -217,7 +221,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-windows-installer
-          path: release/*
+          path: |
+            release/CodeForge-Setup-Windows.exe
+            release/CodeForge-Windows-Certificate.cer
+            release/WINDOWS-SIGNING-METADATA.txt
+            release/BUILD-METADATA.txt
+            release/SHA256-Windows.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -415,7 +424,7 @@ jobs:
               --ks "$KEYSTORE" \
               --ks-type "$KEYSTORE_TYPE" \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
-              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --ks-pass env:CODEFORGE_STORE_PASSWORD \
               --key-pass env:CODEFORGE_STORE_PASSWORD \
               --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"
           fi
@@ -429,7 +438,7 @@ jobs:
             echo "::error::The signed APK certificate does not match the configured production fingerprint."
             exit 1
           fi
-          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" > release/ANDROID-SIGNING-METADATA.txt
+          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\nKEYSTORE_TYPE=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" "$KEYSTORE_TYPE" > release/ANDROID-SIGNING-METADATA.txt
           rm -f "$KEYSTORE"
       - name: Record Android build metadata and checksum
         shell: bash

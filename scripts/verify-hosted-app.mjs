@@ -16,7 +16,7 @@ async function expectOk(fetchImpl, url, path, accept) {
   return response;
 }
 
-export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch } = {}) {
+export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch, requireNoStoreHeaders = false } = {}) {
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.username || base.password) {
     throw new Error('The hosted CodeForge base URL must be a credential-free HTTPS URL.');
@@ -39,7 +39,7 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
   const html = await appResponse.text();
   if (!html.includes('id="root"')) throw new Error('/app did not return the CodeForge SPA document.');
   const cacheControl = (appResponse.headers.get('cache-control') || '').toLowerCase();
-  if (!cacheControl.includes('no-store') && !cacheControl.includes('no-cache')) {
+  if (requireNoStoreHeaders && !cacheControl.includes('no-store') && !cacheControl.includes('no-cache')) {
     throw new Error('/app HTML must not be cached, otherwise Android can retain stale asset manifests.');
   }
 
@@ -99,9 +99,12 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
 if (import.meta.url === invokedPath) {
-  verifyHostedApp({ baseUrl: process.env.CODEFORGE_BASE_URL || DEFAULT_BASE_URL })
+  verifyHostedApp({ baseUrl: process.env.CODEFORGE_BASE_URL || DEFAULT_BASE_URL, requireNoStoreHeaders: process.env.REQUIRE_NO_STORE_HEADERS === 'true' })
     .then(result => {
       console.log('Hosted CodeForge routes, API guard, and static assets verified.');
+      if (!result.appRoute.cacheControl.includes('no-store') && !result.appRoute.cacheControl.includes('no-cache')) {
+        console.warn('The current deployment still serves cacheable /app HTML; the next approved production deployment must apply the no-store HTML policy.');
+      }
       console.log(JSON.stringify(result, null, 2));
     })
     .catch(error => {
