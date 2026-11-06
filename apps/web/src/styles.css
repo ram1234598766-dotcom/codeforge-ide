@@ -270,3 +270,26 @@ body:has(.home-shell){overflow:auto;background:#080c12}
 /* Production downloads stay visibly disabled until a verified release is pinned. */
 .download-link-disabled{width:100%;border:0;text-align:left;cursor:not-allowed;opacity:.68;background:#1a252a;color:#9aabb1}
 .download-link-disabled:disabled{cursor:not-allowed}
+
+
+/* Isolated browser execution output */
+.preview-pane{min-height:210px}
+.preview-pane iframe{flex:1 1 55%;min-height:110px;height:auto}
+.run-console{flex:0 0 38%;min-height:70px;max-height:38%;overflow:auto;background:#0b1118;color:#c5d1df;border-top:1px solid #273541;padding:7px 10px;font:10px 'DM Mono'}
+.run-console-head{display:flex;align-items:center;gap:10px;color:#8193a5;margin-bottom:6px}
+.run-console-head b{font-size:9px;letter-spacing:.8px}
+.run-console-head span{margin-left:auto;font-size:9px}
+.run-console-head button{background:transparent;border:0;color:#9ef2bd;font:9px 'DM Mono';cursor:pointer}
+.run-console>small{display:block;color:#6f8193;padding:4px}
+.run-log{display:flex;align-items:flex-start;gap:9px;padding:3px 0;border-top:1px solid #1b2731}
+.run-log>span{flex:0 0 40px;color:#8aa0af;font-size:8px}
+.run-log pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:#d4dfeb;font:10px/1.5 'DM Mono'}
+.run-log-warn>span{color:#e7bd75}
+.run-log-error>span{color:#f28c91}
+
+
+/* Make the web IDE's preview status unmistakable without implying native parity exists yet. */
+.browser-preview-banner{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;background:#211b10;border-bottom:1px solid #6b5425;color:#f4d9a0;font-size:11px;line-height:1.55}
+.browser-preview-banner b{flex:0 0 auto;font:700 9px 'DM Mono',monospace;letter-spacing:.7px;color:#ffe2a7}
+.browser-preview-banner span{color:#d8c49d}
+@media(max-width:720px){.browser-preview-banner{display:block;padding:9px 12px}.browser-preview-banner b{display:block;margin-bottom:4px}}
