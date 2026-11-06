@@ -88,16 +88,20 @@ assert.match(androidPreview, /trap 'rm -f "\$KEYSTORE_PATH" release\/CodeForge-u
 assert.doesNotMatch(androidPreview, /CodeForge-preview\\.apk/);
 assert.match(native, /workflow-lint/);
 assert.match(installers, /Gradle production build attempt/);
-assert.match(publisher, /WINDOWS_SIGNING.*!= "durable"/);
 assert.match(publisher, /ANDROID_SIGNING.*!= "durable"/);
+assert.doesNotMatch(publisher, /WINDOWS_SIGNING|osslsigncode|CodeForge-Setup-Windows/);
+assert.match(publisher, /ANDROID_SIGNING_CERT_SHA256/);
 assert.match(publisher, /sha256sum -c/);
-assert.match(publisher, /osslsigncode verify/);
 assert.match(publisher, /apksigner.*verify/);
+assert.match(publisher, /PACKAGE=com\.codeforge\.ide/);
+assert.match(publisher, /workflow_run\.run_id/);
 assert.match(publisher, /draft: true/);
 assert.match(publisher, /make_latest: true/);
 assert.match(publisher, /Prevent out-of-order release publication/);
 assert.match(publisher, /check-release-sequence\.mjs/);
 assert.match(publisher, /steps\.sequence\.outputs\.release_ready == 'true'/);
+assert.match(publisher, /Verify published APK download/);
+assert.doesNotMatch(publisher, /CodeForge-Setup-Windows\.exe/);
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 for (const [name, workflow] of [

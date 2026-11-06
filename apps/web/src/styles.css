@@ -286,10 +286,3 @@ body:has(.home-shell){overflow:auto;background:#080c12}
 .run-log pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:#d4dfeb;font:10px/1.5 'DM Mono'}
 .run-log-warn>span{color:#e7bd75}
 .run-log-error>span{color:#f28c91}
-
-
-/* Make the web IDE's preview status unmistakable without implying native parity exists yet. */
-.browser-preview-banner{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;background:#211b10;border-bottom:1px solid #6b5425;color:#f4d9a0;font-size:11px;line-height:1.55}
-.browser-preview-banner b{flex:0 0 auto;font:700 9px 'DM Mono',monospace;letter-spacing:.7px;color:#ffe2a7}
-.browser-preview-banner span{color:#d8c49d}
-@media(max-width:720px){.browser-preview-banner{display:block;padding:9px 12px}.browser-preview-banner b{display:block;margin-bottom:4px}}
