@@ -2,7 +2,7 @@
 
 **Draft for review — CodeForge is not approved or enrolled with SignPath Foundation.**
 
-**Current status:** no SignPath Foundation approval, organization, project, signing policy, artifact configuration, API token, or Foundation certificate has been issued to CodeForge. No CodeForge Windows installer is currently represented as Foundation-signed. Public native downloads remain disabled until the separate production release process verifies both Windows and Android signatures.
+**Current status:** no SignPath Foundation approval, organization, project, signing policy, artifact configuration, API token, or Foundation certificate has been issued to CodeForge. No CodeForge Windows installer is represented as Foundation-signed. The repository now uses a custom Non-Commercial License rather than the earlier Apache-2.0 candidate. This license restricts commercial use and must not be described as an OSI-approved open-source license. The public v1.0.26 preview release is explicitly unsigned.
 
 ## Proposed provider attribution
 
@@ -20,7 +20,7 @@ https://github.com/ram1234598766-dotcom/codeforge-ide
 
 The proposed signed artifact is the Windows NSIS installer `CodeForge-Setup-Windows.exe`, built from CodeForge source on a GitHub-hosted runner. The signing workflow is configured to run only for `main`, upload the exact unsigned EXE as a GitHub Actions artifact, submit that artifact to SignPath, wait for its approval/completion, retrieve the signed EXE, and verify Authenticode status and the expected certificate thumbprint.
 
-The workflow pins the SignPath signing action and artifact-upload action to immutable commit hashes. Missing SignPath configuration leaves the installer marked unsigned. The independent release publisher refuses to publish any release unless both the Windows installer and Android APK pass the existing signature, fingerprint, checksum, and source-provenance checks.
+The workflow pins the SignPath signing action and artifact-upload action to immutable commit hashes. Missing SignPath configuration leaves the installer marked unsigned. The v1.0.26 preview publisher permits explicitly unsigned binaries only because the release is labelled unsigned and independently verifies artifact provenance and SHA-256 checksums. It does not claim publisher identity or code-signing authenticity.
 
 ## Proposed signing roles — confirmation required
 
@@ -42,7 +42,7 @@ All members must have MFA enabled on both GitHub and SignPath before the applica
 - Each release signing request requires manual approval by the designated SignPath approver.
 - The signed output is checked for a valid Authenticode signature, exact expected certificate thumbprint, and a returned SignPath signing-request ID.
 - The separate release publisher independently checks both native signatures, certificate fingerprints, checksums, exact source commit and downloadable assets. If any check fails, no public production release is created.
-- Any modified MPL-covered dependency source must retain its own MPL-2.0 licensing and notices. Third-party dependencies are not relicensed under CodeForge's Apache-2.0 candidate.
+- Any modified MPL-covered dependency source must retain its own MPL-2.0 licensing and notices. Third-party dependencies are not relicensed under CodeForge's Non-Commercial License.
 
 ## Product behavior and SignPath review questions
 
@@ -55,7 +55,7 @@ The dependency snapshot also includes `caniuse-lite` under CC-BY-4.0 as a build-
 ## Required external prerequisites
 
 1. SignPath Foundation accepts the CodeForge application.
-2. The Apache-2.0 candidate is confirmed by the actual rights holder and merged after review.
+2. Any future license change is confirmed by the actual rights holder and approved in writing.
 3. All project and build dependencies satisfy SignPath's OSI-approved-license requirement, including written resolution of the build-only CC-BY-4.0 data dependency.
 4. A previously released Windows installer in the same format exists, clearly labelled unsigned if not yet signed, and product functionality is documented on the download page.
 5. A final privacy policy is published; the installer displays it and provides the required options for any transfers to systems not specified by the user.
@@ -67,7 +67,7 @@ The dependency snapshot also includes `caniuse-lite` under CC-BY-4.0 as a build-
 - SignPath Foundation eligibility and code-signing conditions: https://signpath.org/terms
 - SignPath Foundation application: https://signpath.org/apply
 - SignPath GitHub trusted build system: https://docs.signpath.io/trusted-build-systems/github
-- Apache License 2.0 candidate: `LICENSE`
+- CodeForge Non-Commercial License: LICENSE
 - Ownership and scope review: `docs/LICENSE-OWNERSHIP-REVIEW.md`
 - Privacy policy working draft: [Privacy policy (draft)](PRIVACY-POLICY-DRAFT.md)
 - Third-party license snapshot: `THIRD_PARTY_NOTICES.md`

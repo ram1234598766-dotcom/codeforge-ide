@@ -96,34 +96,27 @@ jobs:
           cp release/windows/SHA256-Windows.txt release/download-check/
           cat release/android/SHA256-Android.txt release/windows/SHA256-Windows.txt > release/SHA256SUMS.txt
 
-          {
-            echo "# CodeForge v1.0.26 — UNSIGNED preview release"
-            echo
-            echo "**Both installers in this release are intentionally unsigned.**"
-            echo "The Android APK has no production Android signing certificate, and the Windows EXE has no Authenticode signature."
-            echo
-            echo "## Downloads"
-            echo "- `CodeForge.apk` — Android package, version code 26, package `com.codeforge.ide`."
-            echo "- `CodeForge-Setup-Windows.exe` — Windows NSIS installer."
-            echo
-            echo "## Important installation warnings"
-            echo "- Windows may display an unknown-publisher or Microsoft SmartScreen warning because the installer is unsigned."
-            echo "- The Android APK has no package signature and cannot be installed by Android as published. It is provided for inspection/testing only; device installation requires a separately signed APK."
-            echo "- No publisher identity or code-signing authenticity is provided by these files. Verify the SHA-256 values in `SHA256SUMS.txt` before installing."
-            echo
-            echo "## Feature status"
-            echo "The current desktop and Android shells still load the hosted CodeForge workspace. Native Node.js, Python, Linux terminal, and autonomous test-and-repair capabilities are not included in this preview build."
-            echo
-            echo "## Build provenance"
-            echo "- Source commit: `$SOURCE_SHA`"
-            echo "- Production installer workflow run: `$SOURCE_RUN_ID`"
-            echo "- Release tag: `$RELEASE_TAG`"
-            echo
-            echo "## SHA-256"
-            echo "```text"
-            cat release/SHA256SUMS.txt
-            echo "```"
-          } > release/RELEASE-NOTES.md
+          cat > release/RELEASE-NOTES.md <<'EOF'
+# CodeForge v1.0.26 — UNSIGNED preview release
+
+**Both installers in this release are intentionally unsigned.**
+The Android APK has no package signature and cannot be installed by Android as published. It is provided for inspection/testing only until it is signed with an app certificate. The Windows EXE has no Authenticode signature and may show an unknown-publisher or SmartScreen warning.
+
+## Downloads
+- Android package: CodeForge.apk — version code 26, package com.codeforge.ide.
+- Windows installer: CodeForge-Setup-Windows.exe — NSIS installer.
+
+## Feature status
+The current desktop and Android shells load the hosted CodeForge workspace. Native Node.js, Python, Linux terminal, and autonomous test-and-repair capabilities are not included in this preview build.
+
+## Build provenance
+- Source commit: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b
+- Production installer workflow run: 42230415496
+- Release tag: v1.0.26
+
+## SHA-256 checksums
+EOF
+          cat release/SHA256SUMS.txt >> release/RELEASE-NOTES.md
 
       - name: Ensure this is the expected CodeForge release tag
         env:

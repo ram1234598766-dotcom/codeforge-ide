@@ -2,7 +2,7 @@
 
 **Audit snapshot: 2026-11-03.** This is a review inventory, not a final SBOM and not a substitute for shipping the complete upstream license texts/notices with installers. Dependencies without committed lockfiles can resolve to different versions in later CI builds.
 
-CodeForge's proposed Apache-2.0 license covers only original CodeForge material that its rights holder is authorized to license. It does not relicense the third-party projects listed below.
+Original CodeForge material is covered by the root CodeForge Non-Commercial License. Third-party components are excluded from that license and remain governed by their own upstream license terms. This notice does not relicense the third-party projects listed below.
 
 ## Specific packages requiring prominent treatment
 
