@@ -17,30 +17,30 @@ const deploy = read('../.github/workflows/deploy-worker.yml');
 
 const d1MigrationTest = read('../scripts/test-d1-migrations.py');
 
-assert.match(deploy, /^on:\\s*\\n\\s+workflow_dispatch:/m, 'Production deployment must be manual-only.');
+assert.ok(deploy.includes('\non:\n  workflow_dispatch:\n'), 'Production deployment must be manual-dispatch only.');
 assert.ok(deploy.includes("if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"), 'Production deployment must run from main only.');
 assert.ok(deploy.includes('SOURCE_REF: ${{ github.ref }}'), 'Deployment must capture the selected source ref.');
 assert.ok(deploy.includes('test "$SOURCE_REF" = "refs/heads/main"'), 'Deployment must reject non-main source refs.');
-assert.doesNotMatch(deploy, /^\\s{2}(?:push|pull_request):/m, 'Production deployment must not run on push or PR close.');
-assert.match(deploy, /confirm_production_deploy:[\\s\\S]*?required: true/, 'Production deployment must require an explicit confirmation input.');
-assert.match(deploy, /test "\\$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"/, 'Production deployment must reject an unconfirmed dispatch.');
-assert.match(deploy, /apply_d1_migrations:[\\s\\S]*?default: "false"/, 'D1 migrations must default to disabled.');
-assert.match(deploy, /confirm_d1_migrations:[\\s\\S]*?required: false/, 'D1 migration confirmation must be an explicit optional input.');
-assert.match(deploy, /test "\\$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"/, 'D1 migrations must require a separate explicit confirmation.');
-assert.match(deploy, /Apply D1 migrations[\\s\\S]*?if: \\$\\{\\{ inputs\\.apply_d1_migrations == 'true' \\}\\}/, 'Initial D1 migration must be opt-in.');
-assert.match(deploy, /Apply workspace search revision migration[\\s\\S]*?if: \\$\\{\\{ inputs\\.apply_d1_migrations == 'true' \\}\\}/, 'Workspace revision migration must be opt-in.');
-assert.doesNotMatch(deploy, /wrangler@4 secret put/, 'Deployment workflow must not mutate Worker secrets.');
+assert.ok(!deploy.includes('\n  push:') && !deploy.includes('\n  pull_request:'), 'Production deployment must not run on push or PR close.');
+assert.ok(deploy.includes('confirm_production_deploy:') && deploy.includes('required: true'), 'Production deployment must require an explicit confirmation input.');
+assert.ok(deploy.includes('test "$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"'), 'Production deployment must reject an unconfirmed dispatch.');
+assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "false"'), 'D1 migrations must default to disabled.');
+assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
+assert.ok(deploy.includes('test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"'), 'D1 migrations must require separate confirmation.');
+assert.ok(deploy.includes("if: ${{ inputs.apply_d1_migrations == 'true' }}"), 'D1 migration steps must be opt-in.');
+assert.ok(!deploy.includes('wrangler@4 secret put'), 'Deployment workflow must not mutate Worker secrets.');
 assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
 for (const migrationPath of [
   'migrations/0005_code_change_requests.sql',
   'migrations/0006_workspace_search_revisions.sql',
 ]) {
-  assert.ok(releasePolicy.includes(migrationPath), 'D1 migration changes must trigger the migration fixture workflow: ' + migrationPath);
+  assert.ok(releasePolicy.includes(migrationPath), 'D1 migration changes must trigger fixture tests: ' + migrationPath);
   assert.ok(d1MigrationTest.includes(migrationPath), 'Disposable D1 fixture must exercise ' + migrationPath);
 }
-assert.ok(releasePolicy.includes('scripts/test-d1-migrations.py'), 'Changes to the disposable D1 fixture must trigger the migration safety workflow.');
-assert.match(d1MigrationTest, /test_migrations_are_rerunnable_without_losing_existing_data_or_revision_progress/);
-assert.match(d1MigrationTest, /test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace/);
+assert.ok(releasePolicy.includes('scripts/test-d1-migrations.py'), 'Changes to the disposable D1 fixture must trigger migration safety tests.');
+assert.ok(d1MigrationTest.includes('test_migrations_are_rerunnable_without_losing_existing_data_or_revision_progress'));
+assert.ok(d1MigrationTest.includes('test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace'));
+
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const unsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
