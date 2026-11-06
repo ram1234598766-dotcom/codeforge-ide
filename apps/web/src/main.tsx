@@ -354,10 +354,11 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
     const receiveRunMessage = (event: MessageEvent) => {
       if (event.source !== runFrameRef.current?.contentWindow) return;
       const payload = event.data as { __codeforgeRun?: unknown; level?: unknown; text?: unknown } | null;
-      if (!payload || payload.__codeforgeRun !== activeRunIdRef.current || typeof payload.text !== 'string') return;
+      const messageText = payload?.text;
+      if (!payload || payload.__codeforgeRun !== activeRunIdRef.current || typeof messageText !== 'string') return;
       const level = typeof payload.level === 'string' && ['log','info','debug','warn','error'].includes(payload.level)
         ? payload.level : 'log';
-      setRunLogs(previous => [...previous, { level, text: payload.text!.slice(0, 4000) }].slice(-100));
+      setRunLogs(previous => [...previous, { level, text: messageText.slice(0, 4000) }].slice(-100));
     };
     window.addEventListener('message', receiveRunMessage);
     return () => window.removeEventListener('message', receiveRunMessage);
