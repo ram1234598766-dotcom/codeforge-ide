@@ -46,7 +46,7 @@ jobs:
         env:
           CONFIRM_D1_MIGRATIONS: ${{ inputs.confirm_d1_migrations }}
         run: test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify exact source revision
         shell: bash
         env:

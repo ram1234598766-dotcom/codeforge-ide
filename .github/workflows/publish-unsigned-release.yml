@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out exact source commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.SOURCE_SHA }}
 
