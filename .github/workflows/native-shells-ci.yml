@@ -111,6 +111,28 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           test -e /dev/kvm
           ls -l /dev/kvm
+      - name: Reclaim build-only disk space before emulator provisioning
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release/CodeForge-debug.apk
+          test -s release/CodeForge-unsigned.apk
+          echo "Filesystem usage before emulator cleanup:"
+          df -h /
+          du -sh node_modules apps/mobile/node_modules apps/mobile/.expo "$HOME/.gradle/caches" "$HOME/.gradle/wrapper/dists" "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms" 2>/dev/null || true
+          rm -rf node_modules apps/mobile/node_modules apps/mobile/.expo
+          rm -rf apps/mobile/android/app/build apps/mobile/android/build
+          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/daemon" "$HOME/.gradle/wrapper/dists" "$HOME/.npm/_cacache"
+          rm -rf "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms" "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"
+          echo "Filesystem usage after emulator cleanup:"
+          df -h /
+          AVAILABLE_KB="$(df -Pk / | awk 'NR == 2 { print $4 }')"
+          if [[ "$AVAILABLE_KB" -lt 5242880 ]]; then
+            echo "::error::Less than 5 GiB remains for Android emulator provisioning."
+            exit 1
+          fi
+          test -s release/CodeForge-debug.apk
+          test -s release/CodeForge-unsigned.apk
       - name: Install and launch Android app in disposable emulator
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
