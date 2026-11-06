@@ -10,7 +10,7 @@ assert.match(app, /injectedJavaScript=/, 'WebView must verify that the hosted SP
 assert.match(app, /appRoot\s*&&\s*appRoot\.children\.length\s*>\s*0/, 'WebView readiness must support already-deployed SPA builds that predate the explicit readiness marker.');
 assert.match(app, /new MutationObserver\(/, 'WebView readiness must observe delayed SPA root rendering instead of relying only on a one-shot document snapshot.');
 assert.match(app, /window\.__CODEFORGE_APP_READY_REPORTED/, 'Repeated readiness injections must be idempotent.');
-assert.match(app, /onLoadEnd=\{\(\) => \{\s*webView\.current\?\.injectJavaScript\(WEBVIEW_READY_SCRIPT\);/s, 'WebView must retry the readiness probe after the main document finishes loading.');
+assert.match(app, /onLoadEnd=\{\(\) => \{[\s\S]*?webView\.current\?\.injectJavaScript\(WEBVIEW_READY_SCRIPT\);/, 'WebView must retry the readiness probe after the main document finishes loading.');
 assert.match(app, /onMessage=/, 'WebView must receive the SPA readiness handshake.');
 assert.match(app, /CodeForge app ready/, 'WebView must expose an accessibility readiness signal.');
 assert.match(app, /Linking\.openURL/, 'Error state must offer an external-browser fallback.');
