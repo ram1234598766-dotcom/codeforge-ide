@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import { Activity, BrainCircuit, Check, ChevronRight, Code2, FilePlus2, GitBranch, History, LogOut, Pencil, Play, Plus, Save, Search, Settings2, Sparkles, Terminal, Trash2, X, Zap } from 'lucide-react';
@@ -35,6 +35,9 @@ import {
   rejectCodeChange,
 } from './lib/workspaces';
 import { runWorkspaceConsoleCommand } from './lib/workspace-console';
+import { buildAgentSystemPrompt, buildAgentUserMessage, selectSafeAgentContextFiles } from './lib/agent-prompt';
+import { listOllamaModels, runOllamaAgent, type OllamaModel } from './lib/ollama';
+import { buildBrowserRunDocument, getRunnableKind } from './lib/code-runner';
 
 type WorkspaceFile = { id?: string; path: string; content: string; language: string | null };
 type Panel = 'explorer' | 'source' | 'agents' | 'terminal' | 'activity' | 'settings';
@@ -315,6 +318,14 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
   const [consoleEntries, setConsoleEntries] = useState<Array<{ command: string; lines: string[] }>>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [runDocument, setRunDocument] = useState('');
+  const [runLogs, setRunLogs] = useState<Array<{ level: string; text: string }>>([]);
+  const runFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const activeRunIdRef = useRef('');
+  const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
+  const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:7b');
+  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+  const [ollamaBusy, setOllamaBusy] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyVersions, setHistoryVersions] = useState<FileVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState('');
@@ -322,6 +333,35 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    try {
+      const savedUrl = localStorage.getItem('codeforge.ollama.url');
+      const savedModel = localStorage.getItem('codeforge.ollama.model');
+      if (savedUrl) setOllamaUrl(savedUrl);
+      if (savedModel) setOllamaModel(savedModel);
+    } catch { /* Private browsing may disable local storage. */ }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('codeforge.ollama.url', ollamaUrl);
+      localStorage.setItem('codeforge.ollama.model', ollamaModel);
+    } catch { /* The connector remains usable for this session. */ }
+  }, [ollamaUrl, ollamaModel]);
+
+  useEffect(() => {
+    const receiveRunMessage = (event: MessageEvent) => {
+      if (event.source !== runFrameRef.current?.contentWindow) return;
+      const payload = event.data as { __codeforgeRun?: unknown; level?: unknown; text?: unknown } | null;
+      if (!payload || payload.__codeforgeRun !== activeRunIdRef.current || typeof payload.text !== 'string') return;
+      const level = typeof payload.level === 'string' && ['log','info','debug','warn','error'].includes(payload.level)
+        ? payload.level : 'log';
+      setRunLogs(previous => [...previous, { level, text: payload.text!.slice(0, 4000) }].slice(-100));
+    };
+    window.addEventListener('message', receiveRunMessage);
+    return () => window.removeEventListener('message', receiveRunMessage);
+  }, []);
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -632,12 +672,47 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not reject change.'); }
     finally { setBusy(false); }
   };
+  const runSelectedFile = () => {
+    if (!selectedPath || !getRunnableKind(selectedPath)) {
+      setNotice('Run currently supports browser HTML and self-contained JavaScript files (.html, .htm, .js, .mjs).');
+      return;
+    }
+    const nextRunId = crypto.randomUUID();
+    try {
+      const document = buildBrowserRunDocument(selectedPath, content, nextRunId);
+      activeRunIdRef.current = nextRunId;
+      setRunLogs([]);
+      setRunDocument(document);
+      setPreviewOpen(true);
+      setNotice('Running ' + selectedPath + ' in an isolated browser frame. Network requests are blocked.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not start this file.');
+    }
+  };
+
+  const discoverOllamaModels = async () => {
+    setOllamaBusy(true);
+    setProviderMessage('');
+    try {
+      const models = await listOllamaModels(ollamaUrl);
+      setOllamaModels(models);
+      if (!models.some(model => model.name === ollamaModel) && models[0]) setOllamaModel(models[0].name);
+      setProviderMessage(models.length
+        ? 'Connected to Ollama. Found ' + models.length + ' local model' + (models.length === 1 ? '.' : 's.')
+        : 'Ollama is reachable, but no models are installed yet. Pull a model and rediscover.');
+    } catch (error) {
+      setProviderMessage(error instanceof Error ? error.message : 'Could not connect to Ollama.');
+    } finally {
+      setOllamaBusy(false);
+    }
+  };
+
   const runAgent = async (task = prompt) => {
     if (!task.trim() || busy) return;
     setBusy(true); setNotice(''); setAgentOutput(''); setPrompt('');
     setActivity('Running ' + agentType + ' agent…');
     try {
-      const result = await apiRequest<{
+      type AgentResponse = {
         runId: string;
         response: string;
         agentType: string;
@@ -647,23 +722,52 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
         createdFiles?: string[];
         proposedChanges?: CodeChangeRequest[];
         skippedFileActions?: number;
-      }>('/api/agents/run', {
-        method: 'POST',
-        body: JSON.stringify({
-          workspaceId,
-          task: task.trim(),
-          agentType,
-          provider: selectedProvider,
-          context: {
-            filePath: selectedPath,
-            content,
-            files: files.slice(0, 10).map(file => ({
-              path: file.path,
-              content: file.path === selectedPath ? content : file.content.slice(0, 4000),
-            })),
-          },
-        }),
-      });
+      };
+      let result: AgentResponse;
+      if (selectedProvider === 'ollama-local') {
+        const safeFiles = selectSafeAgentContextFiles(
+          files.slice(0, 10).map(file => ({ path: file.path, content: file.content })),
+          selectedPath,
+          content,
+        );
+        const completion = await runOllamaAgent(
+          ollamaUrl,
+          ollamaModel,
+          buildAgentSystemPrompt(agentType, canEditWorkspace),
+          buildAgentUserMessage(task, selectedPath, safeFiles),
+        );
+        // Source files and prompts stay on the local machine; only the structured model result
+        // is sent to the authenticated Worker for validation, history, audit, and approval.
+        result = await apiRequest<AgentResponse>('/api/agents/run', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            task: task.trim(),
+            agentType,
+            provider: 'ollama-local',
+            model: completion.model,
+            generatedOutput: completion.content,
+          }),
+        });
+      } else {
+        result = await apiRequest<AgentResponse>('/api/agents/run', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            task: task.trim(),
+            agentType,
+            provider: selectedProvider,
+            context: {
+              filePath: selectedPath,
+              content,
+              files: files.slice(0, 10).map(file => ({
+                path: file.path,
+                content: file.path === selectedPath ? content : file.content.slice(0, 4000),
+              })),
+            },
+          }),
+        });
+      }
       const createdFiles = result.createdFiles || [];
       const proposedChanges = result.proposedChanges || [];
       const skippedActions = result.skippedFileActions || 0;
@@ -816,12 +920,12 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
     <header className="topbar">
       <button className="brand brand-button" onClick={() => setPanel('explorer')}><img className="brand-icon" src="/codeforge-icon.png" alt=""/><span>CodeForge</span><b>ALPHA</b></button>
       <select className="workspace-select" value={workspaceId} onChange={e => selectWorkspace(e.target.value)} aria-label="Workspace">{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={requestApproval} disabled={!dirty || busy || !workspaceId || !canEditWorkspace} title="Create a review request for the current editor buffer"><Check size={14}/> Request approval</button><button onClick={() => openHistory()} disabled={!selectedPath}><History size={14}/> History</button><button onClick={() => setPreviewOpen(value => !value)} disabled={!selectedPath.toLowerCase().endsWith('.html')}><Play size={14}/> Preview</button><button className="run" onClick={save} disabled={!dirty || busy || !canEditWorkspace}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
+      <div className="top-actions"><button onClick={() => setSearchOpen(true)}><Search size={16}/> Search</button><button onClick={requestApproval} disabled={!dirty || busy || !workspaceId || !canEditWorkspace} title="Create a review request for the current editor buffer"><Check size={14}/> Request approval</button><button onClick={() => openHistory()} disabled={!selectedPath}><History size={14}/> History</button><button onClick={runSelectedFile} disabled={busy || !getRunnableKind(selectedPath)} title="Run supported HTML and JavaScript files in an isolated browser frame"><Play size={14}/> Run</button><button className="run" onClick={save} disabled={!dirty || busy || !canEditWorkspace}><Save size={14}/> {busy ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button><button className="avatar" title={session.user.email || 'Account'} onClick={signOut}><LogOut size={14}/></button></div>
     </header>
     <section className="layout">
       <aside className="rail">{([['explorer', Code2], ['source', GitBranch], ['agents', BrainCircuit], ['terminal', Terminal], ['activity', Activity], ['settings', Settings2]] as const).map(([name, Icon]) => <button className={panel === name ? 'rail-button selected' : 'rail-button'} key={name} onClick={() => { setPanel(name); if (name === 'terminal') setTerminalOpen(true); }} title={name}><Icon/></button>)}</aside>
-      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!canAdminWorkspace}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!isWorkspaceOwner}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file" disabled={!canEditWorkspace}><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => openFile(file.path)}><span className="file-dot"/> {file.path}</button>{canEditWorkspace && <button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button>}</div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : panel === 'agents' ? <div className="history-list"><div className="approval-section"><div className="history-role">PENDING CODE APPROVALS · {changeRequests.filter(item => item.status === 'pending').length}</div>{changeRequests.filter(item => item.status === 'pending').length ? changeRequests.filter(item => item.status === 'pending').map(change => <button className="history-item approval-item" key={change.id} onClick={() => {setSelectedChangeId(change.id);setChangeReviewOpen(true);}}><span className="history-role">REVIEW REQUIRED</span><strong>{change.file_path}</strong><small>{new Date(change.created_at || '').toLocaleString()}</small><span className="approval-cta">Review diff <ChevronRight size={12}/></span></button>) : <small className="muted-copy">No pending changes. Unsaved editor changes can be submitted for approval.</small>}</div><div className="approval-section"><div className="history-role">RECENT AGENT RUNS</div>{agentRuns.length ? agentRuns.map(run => <button className="history-item" key={run.id} onClick={() => { try { setAgentOutput(JSON.parse(run.result_json || '{}').response || 'No response stored.'); } catch { setAgentOutput('Could not read this run result.'); } setActivity(run.agent_type + ' · ' + run.status); }}><span className="history-role">{run.agent_type} · {run.status}</span><strong>{run.task}</strong><small>{new Date(run.created_at).toLocaleString()}</small></button>) : <div className="panel-empty"><BrainCircuit size={18}/><strong>No agent runs yet</strong><span>Choose a role in the AI command center and send a task.</span></div>}</div></div> : panel === 'activity' ? <div className="history-list">{activityEvents.length ? activityEvents.map(event => <div className="history-item activity-item" key={event.id}><span className="history-role">{event.action}</span><small>{new Date(event.created_at).toLocaleString()}</small><code>{event.metadata_json}</code></div>) : <div className="panel-empty"><Activity size={18}/><strong>No activity yet</strong><span>Workspace, file, and agent actions will appear here.</span></div>}</div> : panel === 'settings' ? <div className="provider-settings"><h3>Profile</h3><p>Signed in as {session.user.email}</p><label>Display name<input value={profileName} onChange={event => setProfileName(event.target.value)} maxLength={80} placeholder="Your display name"/></label><label>Avatar URL<input value={profileAvatar} onChange={event => setProfileAvatar(event.target.value)} placeholder="https://…"/></label><button className="provider-save" onClick={saveProfile} disabled={busy}>Save profile</button><h3>Workspace collaboration</h3><p>Current role: <b>{activeWorkspace?.role || 'owner'}</b>. Invitations are single-use links that expire after 7 days.</p>{canAdminWorkspace ? <><label>Invite email<input type="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="teammate@example.com"/></label><label>Role<select value={inviteRole} onChange={event => setInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label><button className="provider-save" onClick={inviteMember} disabled={busy || !inviteEmail.trim()}>Create invitation link</button>{inviteUrl && <div className="invite-link"><input readOnly value={inviteUrl}/><button onClick={() => navigator.clipboard.writeText(inviteUrl)}>Copy</button></div>}<h4>Workspace members</h4>{workspaceMembers.map(member => <div className="provider-row" key={member.user_id}><div><b>{member.display_name || member.user_id.slice(0,8)}</b><small>{member.role}</small></div>{member.role !== 'owner' && <button onClick={() => removeMember(member.user_id)}>Remove</button>}</div>)}</> : <small>Only workspace owners and admins can invite or manage members.</small>}{collaborationMessage && <div className="provider-message" role="status">{collaborationMessage}</div>}<h3>Model providers</h3><p>Use your own API key. Keys are AES-GCM encrypted in D1 and decrypted only inside the Worker.</p><label>Provider<select value={providerForm} onChange={event => { const value=event.target.value as ProviderId; setProviderForm(value); setProviderModel(({openai:'gpt-4.1-mini',deepseek:'deepseek-chat',groq:'llama-3.3-70b-versatile',openrouter:'openai/gpt-4.1-mini'} as Record<ProviderId,string>)[value]); }}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="groq">Groq</option><option value="openrouter">OpenRouter</option></select></label><label>Model<input value={providerModel} onChange={event => setProviderModel(event.target.value)} placeholder="Model identifier"/></label><label>API key<input type="password" value={providerApiKey} onChange={event => setProviderApiKey(event.target.value)} autoComplete="off" placeholder="Paste provider API key"/></label><button className="provider-save" onClick={saveProvider} disabled={busy || !providerApiKey.trim() || !providerModel.trim()}>Encrypt and save key</button>{providerConfigs.length > 0 && <><h4>Configured providers</h4>{providerConfigs.map(config => <div className="provider-row" key={config.provider}><div><b>{config.provider}</b><small>{config.model}</small></div><button onClick={() => testProvider(config.provider)}>Test</button><button onClick={() => removeProvider(config.provider)}>Remove</button></div>)}</>}{providerMessage && <div className="provider-message" role="status">{providerMessage}</div>}<small>Provider calls are billed by your chosen provider. Workers AI remains available as a fallback.</small></div> : panel === 'terminal' ? <div className="panel-empty"><Terminal size={18}/><strong>Workspace console</strong><span>Run safe commands against D1-backed files. This is not an operating-system shell.</span><button onClick={() => { setTerminalOpen(true); setConsoleInput('help'); }}>Open console</button></div> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>This capability is not connected yet.</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
-      <div className={previewOpen ? 'editor preview-active' : 'editor'}><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ readOnly: !canEditWorkspace, minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div>{previewOpen && <div className="preview-pane"><div className="preview-head"><span><Play size={12}/> HTML PREVIEW · SANDBOXED</span><button onClick={() => setPreviewOpen(false)}><X size={13}/></button></div><iframe title="Sandboxed HTML preview" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={selectedPath.toLowerCase().endsWith('.html') ? content : '<!doctype html><html><body style="font:14px sans-serif;padding:24px">Select an HTML file to preview.</body></html>'}/></div>}<div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer">
+      <aside className="sidebar"><div className="side-title"><span>{panelTitle}</span><div className="side-actions"><button className="icon-button" onClick={renameActiveWorkspace} title="Rename workspace" disabled={!canAdminWorkspace}><Pencil size={13}/></button><button className="icon-button" onClick={deleteActiveWorkspace} title="Delete workspace" disabled={!isWorkspaceOwner}><Trash2 size={13}/></button><button className="icon-button" onClick={createNewWorkspace} title="New workspace"><Plus size={15}/></button></div></div>{panel === 'explorer' ? <><div className="tree"><div className="folder">⌄ <span>{workspaces.find(item => item.id === workspaceId)?.name.toUpperCase() || 'WORKSPACE'}</span><button onClick={addFile} title="New file" disabled={!canEditWorkspace}><FilePlus2 size={13}/></button></div>{files.map(file => <div className="file-row" key={file.path}><button className={'file ' + (selectedPath === file.path ? 'active' : '')} onClick={() => openFile(file.path)}><span className="file-dot"/> {file.path}</button>{canEditWorkspace && <button className="file-delete" onClick={() => deleteFile(file.path)} title={`Delete ${file.path}`}><X size={11}/></button>}</div>)}</div><div className="agent-card"><div className="agent-head"><span className="pulse"/> ORCHESTRATOR</div><h3>{activity}</h3><p>Workspace files and edits are persisted to Cloudflare D1.</p><button onClick={() => setPanel('agents')}>Open agent console <ChevronRight size={14}/></button></div></> : panel === 'agents' ? <div className="history-list"><div className="approval-section"><div className="history-role">PENDING CODE APPROVALS · {changeRequests.filter(item => item.status === 'pending').length}</div>{changeRequests.filter(item => item.status === 'pending').length ? changeRequests.filter(item => item.status === 'pending').map(change => <button className="history-item approval-item" key={change.id} onClick={() => {setSelectedChangeId(change.id);setChangeReviewOpen(true);}}><span className="history-role">REVIEW REQUIRED</span><strong>{change.file_path}</strong><small>{new Date(change.created_at || '').toLocaleString()}</small><span className="approval-cta">Review diff <ChevronRight size={12}/></span></button>) : <small className="muted-copy">No pending changes. Unsaved editor changes can be submitted for approval.</small>}</div><div className="approval-section"><div className="history-role">RECENT AGENT RUNS</div>{agentRuns.length ? agentRuns.map(run => <button className="history-item" key={run.id} onClick={() => { try { setAgentOutput(JSON.parse(run.result_json || '{}').response || 'No response stored.'); } catch { setAgentOutput('Could not read this run result.'); } setActivity(run.agent_type + ' · ' + run.status); }}><span className="history-role">{run.agent_type} · {run.status}</span><strong>{run.task}</strong><small>{new Date(run.created_at).toLocaleString()}</small></button>) : <div className="panel-empty"><BrainCircuit size={18}/><strong>No agent runs yet</strong><span>Choose a role in the AI command center and send a task.</span></div>}</div></div> : panel === 'activity' ? <div className="history-list">{activityEvents.length ? activityEvents.map(event => <div className="history-item activity-item" key={event.id}><span className="history-role">{event.action}</span><small>{new Date(event.created_at).toLocaleString()}</small><code>{event.metadata_json}</code></div>) : <div className="panel-empty"><Activity size={18}/><strong>No activity yet</strong><span>Workspace, file, and agent actions will appear here.</span></div>}</div> : panel === 'settings' ? <div className="provider-settings"><h3>Profile</h3><p>Signed in as {session.user.email}</p><label>Display name<input value={profileName} onChange={event => setProfileName(event.target.value)} maxLength={80} placeholder="Your display name"/></label><label>Avatar URL<input value={profileAvatar} onChange={event => setProfileAvatar(event.target.value)} placeholder="https://…"/></label><button className="provider-save" onClick={saveProfile} disabled={busy}>Save profile</button><h3>Workspace collaboration</h3><p>Current role: <b>{activeWorkspace?.role || 'owner'}</b>. Invitations are single-use links that expire after 7 days.</p>{canAdminWorkspace ? <><label>Invite email<input type="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} placeholder="teammate@example.com"/></label><label>Role<select value={inviteRole} onChange={event => setInviteRole(event.target.value as 'admin' | 'editor' | 'viewer')}><option value="admin">Admin</option><option value="editor">Editor</option><option value="viewer">Viewer</option></select></label><button className="provider-save" onClick={inviteMember} disabled={busy || !inviteEmail.trim()}>Create invitation link</button>{inviteUrl && <div className="invite-link"><input readOnly value={inviteUrl}/><button onClick={() => navigator.clipboard.writeText(inviteUrl)}>Copy</button></div>}<h4>Workspace members</h4>{workspaceMembers.map(member => <div className="provider-row" key={member.user_id}><div><b>{member.display_name || member.user_id.slice(0,8)}</b><small>{member.role}</small></div>{member.role !== 'owner' && <button onClick={() => removeMember(member.user_id)}>Remove</button>}</div>)}</> : <small>Only workspace owners and admins can invite or manage members.</small>}{collaborationMessage && <div className="provider-message" role="status">{collaborationMessage}</div>}<h3>Local Ollama</h3><p>Run models already installed on this computer. Prompts and workspace source go directly from this browser to Ollama; CodeForge stores only the resulting run and file proposals.</p><label>Local Ollama URL<input type="url" value={ollamaUrl} onChange={event => setOllamaUrl(event.target.value)} placeholder="http://localhost:11434" spellCheck={false}/></label><label>Local model<input list="codeforge-ollama-models" value={ollamaModel} onChange={event => setOllamaModel(event.target.value)} placeholder="qwen2.5-coder:7b"/></label><datalist id="codeforge-ollama-models">{ollamaModels.map(model => <option key={model.name} value={model.name}/>)}</datalist><button className="provider-save" type="button" onClick={discoverOllamaModels} disabled={ollamaBusy || !ollamaUrl.trim()}>{ollamaBusy ? 'Connecting…' : 'Discover local models'}</button><small>Install a model with ollama pull qwen2.5-coder:7b. Start Ollama and allow this exact site origin using OLLAMA_ORIGINS=https://codeforge-ide.vasudevaya.workers.dev, then restart Ollama. Ollama must run on the same computer as your browser.</small><h3>Model providers</h3><p>Use your own API key. Keys are AES-GCM encrypted in D1 and decrypted only inside the Worker.</p><label>Provider<select value={providerForm} onChange={event => { const value=event.target.value as ProviderId; setProviderForm(value); setProviderModel(({openai:'gpt-4.1-mini',deepseek:'deepseek-chat',groq:'llama-3.3-70b-versatile',openrouter:'openai/gpt-4.1-mini'} as Record<ProviderId,string>)[value]); }}><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="groq">Groq</option><option value="openrouter">OpenRouter</option></select></label><label>Model<input value={providerModel} onChange={event => setProviderModel(event.target.value)} placeholder="Model identifier"/></label><label>API key<input type="password" value={providerApiKey} onChange={event => setProviderApiKey(event.target.value)} autoComplete="off" placeholder="Paste provider API key"/></label><button className="provider-save" onClick={saveProvider} disabled={busy || !providerApiKey.trim() || !providerModel.trim()}>Encrypt and save key</button>{providerConfigs.length > 0 && <><h4>Configured providers</h4>{providerConfigs.map(config => <div className="provider-row" key={config.provider}><div><b>{config.provider}</b><small>{config.model}</small></div><button onClick={() => testProvider(config.provider)}>Test</button><button onClick={() => removeProvider(config.provider)}>Remove</button></div>)}</>}{providerMessage && <div className="provider-message" role="status">{providerMessage}</div>}<small>Provider calls are billed by your chosen provider. Workers AI remains available as a fallback.</small></div> : panel === 'terminal' ? <div className="panel-empty"><Terminal size={18}/><strong>Workspace console</strong><span>Run safe commands against D1-backed files. This is not an operating-system shell.</span><button onClick={() => { setTerminalOpen(true); setConsoleInput('help'); }}>Open console</button></div> : <div className="panel-empty"><Settings2 size={18}/><strong>{panelTitle}</strong><span>This capability is not connected yet.</span><button onClick={() => setPanel('explorer')}>Back to explorer</button></div>}</aside>
+      <div className={previewOpen ? 'editor preview-active' : 'editor'}><div className="tabs">{openPaths.map(path => <div className={selectedPath === path ? 'tab-wrap active' : 'tab-wrap'} key={path}><button className="tab" onClick={() => openFile(path)}>{path} {selectedPath === path && dirty ? '•' : <Check size={11}/>}</button><button className="tab-close" onClick={() => closeTab(path)} aria-label={`Close ${path}`}><X size={11}/></button></div>)}{!openPaths.length && <span className="tab-empty">No file open</span>}</div><div className="monaco-wrap"><Editor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} value={content} onChange={value => setContent(value ?? '')} options={{ readOnly: !canEditWorkspace, minimap: { enabled: true }, fontSize: 13, fontFamily: 'DM Mono, monospace', automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on', padding: { top: 16 } }}/></div>{previewOpen && <div className="preview-pane"><div className="preview-head"><span><Play size={12}/> {selectedPath.toLowerCase().endsWith('.html') || selectedPath.toLowerCase().endsWith('.htm') ? 'HTML PREVIEW' : 'JAVASCRIPT RUN'} · ISOLATED</span><button onClick={() => { activeRunIdRef.current = ''; setPreviewOpen(false); setRunDocument(''); }}><X size={13}/></button></div><iframe ref={runFrameRef} title="CodeForge isolated browser run" sandbox="allow-scripts" referrerPolicy="no-referrer" srcDoc={runDocument}/><div className="run-console" aria-live="polite"><div className="run-console-head"><b>OUTPUT</b><span>{runLogs.length} messages</span><button type="button" onClick={() => setRunLogs([])}>Clear</button></div>{runLogs.length ? runLogs.map((entry,index) => <div className={'run-log run-log-' + entry.level} key={index}><span>{entry.level.toUpperCase()}</span><pre>{entry.text}</pre></div>) : <small>Console output and runtime errors will appear here.</small>}</div></div>}<div className="bottom"><span><span className="green">●</span> {selectedFile?.language || 'Plain text'}</span><span>{connection === 'connected' ? 'Cloudflare D1 + KV connected' : 'Backend unavailable'}</span><span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span><span>UTF-8</span></div>{terminalOpen && <div className="terminal-drawer">
         <div className="terminal-head"><div><b>WORKSPACE CONSOLE</b><small>D1-backed files · allowlisted commands · no OS shell</small></div><button onClick={() => setTerminalOpen(false)} aria-label="Close workspace console"><X size={14}/></button></div>
         <div className="terminal-output" aria-live="polite">
           {consoleEntries.length === 0 ? <p>Type <code>help</code> to see available workspace commands.</p> : consoleEntries.map((entry, index) => <div className="terminal-entry" key={index}><div className="terminal-command"><span>›</span> {entry.command}</div>{entry.lines.map((line, lineIndex) => <div className="terminal-line" key={lineIndex}>{line || ' '}</div>)}</div>)}
@@ -831,7 +935,7 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
           <button type="submit" disabled={!consoleInput.trim()}>Run</button>
         </form>
       </div>}</div>
-      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> {selectedProvider === 'workers-ai' ? 'Cloudflare Workers AI · Llama 3.3 70B' : selectedProvider.toUpperCase() + ' · configured model'}</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
+      <aside className="inspector"><div className="inspector-title">AI COMMAND CENTER <span>guarded</span></div><div className="prompt"><div className="spark"><Sparkles size={16}/></div><p>What should we build next?</p><select className="agent-select" aria-label="Agent role" value={agentType} onChange={event => setAgentType(event.target.value)}><option value="coder">Coder</option><option value="planner">Planner</option><option value="reviewer">Reviewer</option><option value="debugger">Debugger</option><option value="tester">Tester</option><option value="refactorer">Refactorer</option><option value="security">Security</option><option value="documentation">Documentation</option></select><select className="agent-select" aria-label="Model provider" value={selectedProvider} onChange={event => setSelectedProvider(event.target.value)}><option value="workers-ai">Cloudflare Workers AI</option><option value="ollama-local">Ollama · Local machine</option>{providerConfigs.map(config => <option key={config.provider} value={config.provider}>{config.provider} · {config.model}</option>)}</select><div className="prompt-input"><input aria-label="AI task" value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => event.key === 'Enter' && runAgent()} placeholder="Describe a task…"/><button onClick={() => runAgent()} aria-label="Queue AI task"><ChevronRight size={16}/></button></div><div className="chips"><button onClick={() => runAgent('Review this file')}>Review this file</button><button onClick={() => runAgent('Find bugs')}>Find bugs</button><button onClick={() => runAgent('Write tests')}>Write tests</button></div><small className="ai-cost-note">Workers AI usage-based billing may apply.</small></div>{agentOutput && <div className="agent-output"><div><b>AGENT RESPONSE</b><button onClick={() => navigator.clipboard.writeText(agentOutput)}>Copy</button></div><pre>{agentOutput}</pre></div>}<div className="run-card"><div className="run-label"><span className="green">●</span> WORKSPACE STATUS <span>{connection}</span></div><h3>{activity}</h3><div className="steps"><div>✓ Supabase identity verified</div><div>✓ D1 workspace persistence</div><div className="current"><Zap size={13}/> {selectedProvider === 'workers-ai' ? 'Cloudflare Workers AI · Llama 3.3 70B' : selectedProvider === 'ollama-local' ? 'Ollama · ' + ollamaModel + ' (local)' : selectedProvider.toUpperCase() + ' · configured model'}</div></div></div><div className="metrics"><div><span>WORKSPACES</span><strong>{workspaces.length}</strong></div><div><span>FILES</span><strong>{files.length}</strong></div><div><span>ACCOUNT</span><strong>LIVE</strong></div></div>{notice && <div className="notice" role="status">{notice}</div>}</aside>
     </section>
     {changeReviewOpen && selectedChange && <div className="modal-backdrop" onClick={() => setChangeReviewOpen(false)}><div className="history-modal change-review-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>APPROVE CODE CHANGE</b><small>{selectedChange.file_path} · review before applying</small></div><button onClick={() => setChangeReviewOpen(false)}><X size={16}/></button></div><div className="change-review-note">This proposal will modify your workspace file only after you approve it. The current version is preserved in file history.</div><div className="history-diff"><DiffEditor height="100%" theme="vs-dark" language={languageFor(selectedChange.file_path)} original={selectedChange.original_content} modified={selectedChange.proposed_content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/></div><div className="change-review-actions"><button className="reject-change" onClick={rejectSelectedChange} disabled={busy}>Reject</button><button className="approve-change" onClick={approveSelectedChange} disabled={busy}><Check size={14}/> {busy ? 'Applying…' : 'Approve & apply'}</button></div></div></div>}
     {historyOpen && <div className="modal-backdrop" onClick={() => setHistoryOpen(false)}><div className="history-modal" onClick={event => event.stopPropagation()}><div className="history-modal-head"><div><b>FILE VERSION HISTORY</b><small>{selectedPath}</small></div><button onClick={() => setHistoryOpen(false)}><X size={16}/></button></div><div className="history-modal-body"><aside className="version-list">{historyLoading ? <small>Loading versions…</small> : historyVersions.length ? historyVersions.map(version => <button className={selectedVersion === version.id ? 'version-item selected' : 'version-item'} key={version.id} onClick={() => { setSelectedVersion(version.id); setVersionContent(version.content); }}><b>{new Date(version.created_at).toLocaleString()}</b><small>{version.content.length.toLocaleString()} characters</small></button>) : <div className="panel-empty"><History size={18}/><strong>No saved versions</strong><span>Save the file after editing to create a history snapshot.</span></div>}</aside><div className="history-diff">{selectedVersion ? <DiffEditor height="100%" theme="vs-dark" language={selectedFile?.language || 'typescript'} original={versionContent} modified={content} options={{readOnly:true,minimap:{enabled:false},fontSize:12,renderSideBySide:true,scrollBeyondLastLine:false}}/> : <div className="panel-empty">Select a version to compare.</div>}</div></div><div className="history-modal-foot"><span>Left: selected version · Right: current editor buffer</span><button className="run" onClick={restoreVersion} disabled={!selectedVersion || busy || !canEditWorkspace}>Restore selected version</button></div></div></div>}{searchOpen && <div className="modal-backdrop" onClick={() => setSearchOpen(false)}><div className="search-modal" onClick={event => event.stopPropagation()}>
