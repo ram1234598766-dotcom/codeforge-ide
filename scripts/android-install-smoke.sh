@@ -35,6 +35,24 @@ if [[ -z "$APP_PID" ]]; then
   exit 1
 fi
 
+WEBVIEW_READY=false
+for attempt in $(seq 1 60); do
+  adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
+  UI_TREE="$(adb shell cat /sdcard/codeforge-window.xml 2>/dev/null | tr -d '\\r' || true)"
+  if [[ "$UI_TREE" == *"CodeForge app ready"* ]]; then
+    WEBVIEW_READY=true
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$WEBVIEW_READY" != "true" ]]; then
+  adb logcat -d -s AndroidRuntime:E chromium:E WebViewFactory:I > "$LOG_FILE" || true
+  grep -E -i "WebView|chromium|CodeForge" "$LOG_FILE" | tail -n 40 >&2 || true
+  printf 'Hosted CodeForge /app route did not complete its WebView readiness handshake.\\n' >&2
+  exit 1
+fi
+
 sleep 5
 APP_PID="$(adb shell pidof "$PACKAGE_NAME" | tr -d '\r' || true)"
 if [[ -z "$APP_PID" ]]; then

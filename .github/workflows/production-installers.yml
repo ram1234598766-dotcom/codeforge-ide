@@ -296,20 +296,50 @@ jobs:
           KEYSTORE_BYTES="$(wc -c < "$KEYSTORE" | tr -d '[:space:]')"
           echo "Decoded Android keystore size: $KEYSTORE_BYTES bytes"
           KEYSTORE_LIST="$RUNNER_TEMP/codeforge-keystore-list.txt"
-          KEYTOOL_ERROR="$RUNNER_TEMP/codeforge-keytool-error.txt"
-          if ! keytool -list -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_LIST" 2> "$KEYTOOL_ERROR"; then
-            KEYTOOL_DIAGNOSTIC="$(head -n 1 "$KEYTOOL_ERROR" | cut -c1-240)"
-            echo "::error::The decoded Android keystore could not be opened. Verify that ANDROID_KEYSTORE_BASE64 contains the complete keystore bytes and ANDROID_KEYSTORE_PASSWORD is the matching store password. Safe keytool diagnostic: ${KEYTOOL_DIAGNOSTIC:-no diagnostic returned}"
+          KEYSTORE_DIAGNOSTIC="$RUNNER_TEMP/codeforge-keytool-diagnostic.txt"
+          KEYSTORE_MAGIC="$(od -An -tx1 -N4 "$KEYSTORE" | tr -d '[:space:]')"
+          case "$KEYSTORE_MAGIC" in
+            feedfeed) KEYSTORE_TYPE="JKS" ;;
+            30*) KEYSTORE_TYPE="PKCS12" ;;
+            *) KEYSTORE_TYPE="unknown" ;;
+          esac
+          echo "Decoded Android keystore container: $KEYSTORE_TYPE (magic=$KEYSTORE_MAGIC, bytes=$KEYSTORE_BYTES)"
+          if [[ "$KEYSTORE_TYPE" == "unknown" ]]; then
+            for candidate in JKS PKCS12; do
+              if keytool -list -storetype "$candidate" -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+                KEYSTORE_TYPE="$candidate"
+                break
+              fi
+            done
+          elif ! keytool -list -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+            KEYSTORE_TYPE="invalid"
+          fi
+          if [[ "$KEYSTORE_TYPE" == "unknown" || "$KEYSTORE_TYPE" == "invalid" ]]; then
+            KEYTOOL_DIAGNOSTIC="$(python3 - "$KEYSTORE_DIAGNOSTIC" <<'PY'
+          import os
+          import pathlib
+          import sys
+          diagnostic = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          for name in ("ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_PASSWORD", "ANDROID_KEY_ALIAS"):
+              secret = os.environ.get(name, "")
+              if secret:
+                  diagnostic = diagnostic.replace(secret, "[REDACTED]")
+          lines = [line.strip() for line in diagnostic.splitlines() if line.strip()]
+          print(" | ".join(lines[:2])[:240] or "no keytool diagnostic returned")
+          PY
+          )"
+            echo "::error::The decoded Android keystore could not be opened. Container magic=$KEYSTORE_MAGIC; size=$KEYSTORE_BYTES bytes; detected type=$KEYSTORE_TYPE. Verify that ANDROID_KEYSTORE_BASE64 contains the original complete keystore file and that ANDROID_KEYSTORE_PASSWORD is correct. Sanitized keytool diagnostic: $KEYTOOL_DIAGNOSTIC"
             exit 1
           fi
-          echo "Android keystore opened successfully."
+          cp "$KEYSTORE_DIAGNOSTIC" "$KEYSTORE_LIST"
+          echo "Android keystore opened successfully as $KEYSTORE_TYPE."
           if ! awk -F, -v alias="$ANDROID_KEY_ALIAS" '$1 == alias { found=1 } END { exit !found }' "$KEYSTORE_LIST"; then
             echo "::error::The Android keystore opened, but ANDROID_KEY_ALIAS was not found in it. Verify the alias configured in repository secrets."
             exit 1
           fi
           echo "Configured Android key alias is present."
           EXPECTED_CERT="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
-          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | sha256sum | awk '{print toupper($1)}')"
+          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | sha256sum | awk '{print toupper($1)}')"
           echo "Android keystore certificate SHA-256: $ACTUAL_KEYSTORE_CERT"
           if [[ ! "$EXPECTED_CERT" =~ ^[A-F0-9]{64}$ ]]; then
             echo "::error::ANDROID_SIGNING_CERT_SHA256 must contain exactly 64 hexadecimal characters."
@@ -344,7 +374,7 @@ jobs:
             echo "::error::The signed APK certificate does not match the configured production fingerprint."
             exit 1
           fi
-          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" > release/ANDROID-SIGNING-METADATA.txt
+          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\nKEYSTORE_TYPE=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" "$KEYSTORE_TYPE" > release/ANDROID-SIGNING-METADATA.txt
           rm -f "$KEYSTORE"
       - name: Stage unsigned APK when durable signing is unavailable
         if: steps.android-signing.outputs.configured != 'true' || steps.android-signing-run.outcome != 'success'
