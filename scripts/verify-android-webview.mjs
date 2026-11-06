@@ -7,6 +7,7 @@ assert.match(app, /onHttpError=/, 'WebView must surface HTTP failures.');
 assert.match(app, /onRenderProcessGone=/, 'WebView must recover from renderer termination.');
 assert.match(app, /onContentProcessDidTerminate=/, 'WebView must recover from content-process termination.');
 assert.match(app, /injectedJavaScript=/, 'WebView must verify that the hosted SPA rendered.');
+assert.match(app, /appRoot\s*&&\s*appRoot\.children\.length\s*>\s*0/, 'WebView readiness must support already-deployed SPA builds that predate the explicit readiness marker.');
 assert.match(app, /onMessage=/, 'WebView must receive the SPA readiness handshake.');
 assert.match(app, /CodeForge app ready/, 'WebView must expose an accessibility readiness signal.');
 assert.match(app, /Linking\.openURL/, 'Error state must offer an external-browser fallback.');
