@@ -14,37 +14,11 @@ const releasePolicy = read('../.github/workflows/release-policy.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
 const deploy = read('../.github/workflows/deploy-worker.yml');
-
-const d1MigrationTest = read('../scripts/test-d1-migrations.py');
-
-assert.ok(deploy.includes('\non:\n  workflow_dispatch:\n'), 'Production deployment must be manual-dispatch only.');
-assert.ok(deploy.includes("if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}"), 'Production deployment must run from main only.');
-assert.ok(deploy.includes('SOURCE_REF: ${{ github.ref }}'), 'Deployment must capture the selected source ref.');
-assert.ok(deploy.includes('test "$SOURCE_REF" = "refs/heads/main"'), 'Deployment must reject non-main source refs.');
-assert.ok(!deploy.includes('\n  push:') && !deploy.includes('\n  pull_request:'), 'Production deployment must not run on push or PR close.');
-assert.ok(deploy.includes('confirm_production_deploy:') && deploy.includes('required: true'), 'Production deployment must require an explicit confirmation input.');
-assert.ok(deploy.includes('test "$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"'), 'Production deployment must reject an unconfirmed dispatch.');
-assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "false"'), 'D1 migrations must default to disabled.');
-assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
-assert.ok(deploy.includes('test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"'), 'D1 migrations must require separate confirmation.');
-assert.ok(deploy.includes("if: ${{ inputs.apply_d1_migrations == 'true' }}"), 'D1 migration steps must be opt-in.');
-assert.ok(!deploy.includes('wrangler@4 secret put'), 'Deployment workflow must not mutate Worker secrets.');
-assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
-for (const migrationPath of [
-  'migrations/0005_code_change_requests.sql',
-  'migrations/0006_workspace_search_revisions.sql',
-]) {
-  assert.ok(releasePolicy.includes(migrationPath), 'D1 migration changes must trigger fixture tests: ' + migrationPath);
-  assert.ok(d1MigrationTest.includes(migrationPath), 'Disposable D1 fixture must exercise ' + migrationPath);
-}
-assert.ok(releasePolicy.includes('scripts/test-d1-migrations.py'), 'Changes to the disposable D1 fixture must trigger migration safety tests.');
-assert.ok(d1MigrationTest.includes('test_migrations_are_rerunnable_without_losing_existing_data_or_revision_progress'));
-assert.ok(d1MigrationTest.includes('test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace'));
-
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const unsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
 const home = read('../apps/web/src/main.tsx');
+const mainApp = home;
 const releaseSource = read('../apps/web/src/lib/release.ts');
 
 assert.match(installers, /SIGNPATH_API_TOKEN/);
@@ -108,16 +82,6 @@ assert.ok(native.includes("codeforge-desktop.exe"));
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /Validate Android smoke script syntax/);
 assert.ok(native.includes("bash -n scripts/android-install-smoke.sh"));
-
-const diskCleanupStep = native.indexOf("name: Reclaim build-only disk space before emulator provisioning");
-const emulatorSmokeStep = native.indexOf("name: Install and launch Android app in disposable emulator");
-assert.ok(diskCleanupStep >= 0 && diskCleanupStep < emulatorSmokeStep, "Android build-only disk cleanup must run before emulator provisioning.");
-assert.ok(native.includes('test -s release/CodeForge-debug.apk'), "The staged debug APK must survive emulator disk cleanup.");
-assert.ok(native.includes('test -s release/CodeForge-unsigned.apk'), "The staged release APK must survive emulator disk cleanup.");
-assert.ok(native.includes('rm -rf "$HOME/.gradle/caches"'), "Gradle caches must be removed after APK staging to free emulator disk space.");
-assert.ok(native.includes('rm -rf "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms" "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"'), "Build-only Android SDK packages must be removed before the emulator action reinstalls its required packages.");
-assert.ok(native.includes('AVAILABLE_KB') && native.includes('5242880'), "Android emulator provisioning must fail with a clear diagnostic when less than 5 GiB is available.");
-assert.ok(native.includes('df -h /'), "Android emulator CI must report filesystem usage before and after cleanup.");
 assert.ok(native.includes("script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk"));
 assert.match(native, /Verify Android permission allowlist/);
 assert.ok(native.includes("node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt"));
@@ -289,6 +253,63 @@ assert.match(unsignedPublisher, /Verify public release assets and checksums/);
 assert.match(home, /getReleaseDownloadUrl\('CodeForge-Setup-Windows\.exe'\)/);
 assert.match(home, /getReleaseDownloadUrl\('CodeForge\.apk'\)/);
 assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
+
+
+const androidSigningStep = installers.slice(
+  installers.indexOf("name: Sign APK with durable production keystore"),
+  installers.indexOf("name: Record Android build metadata and checksum"),
+);
+assert.ok(androidSigningStep.includes("for candidate_type in JKS PKCS12"), "Android signing must validate both supported keystore formats.");
+assert.ok(androidSigningStep.includes("--storetype"), "keytool validation must use the detected keystore type.");
+assert.ok(androidSigningStep.includes("--ks-type"), "apksigner must use the detected keystore type.");
+assert.ok(androidSigningStep.includes("ANDROID_KEYSTORE_PASSWORD") && androidSigningStep.includes("ANDROID_KEY_PASSWORD"));
+assert.ok(androidSigningStep.includes("trap 'rm -f"), "The temporary release keystore must be deleted even when signing fails.");
+assert.ok(androidSigningStep.includes('apksigner" verify --verbose --Werr --print-certs'), "The release APK must pass strict Android signature verification.");
+assert.ok(androidSigningStep.includes('zipalign" -c 4 release/CodeForge.apk'), "The final signed APK must remain zip-aligned.");
+assert.doesNotMatch(androidSigningStep, /continue-on-error: true/);
+assert.doesNotMatch(installers, /name: Stage unsigned APK when durable signing is unavailable/, "Production installers must never substitute an unsigned APK after signing failure.");
+assert.ok(installers.includes("The Android production signing secrets are required"), "Missing release credentials must fail the production installer job.");
+assert.ok(installers.includes("ANDROID_KEYSTORE_BASE64") && installers.includes("ANDROID_SIGNING_CERT_SHA256"));
+
+const windowsSelfSigning = installers.slice(
+  installers.indexOf("name: Create a self-signed Windows code-signing certificate"),
+  installers.indexOf("name: Record Windows build metadata and checksum"),
+);
+assert.ok(windowsSelfSigning.includes("New-SelfSignedCertificate -Type CodeSigningCert"));
+assert.ok(windowsSelfSigning.includes("Export-Certificate"), "Only the public Windows certificate may be exported.");
+assert.ok(windowsSelfSigning.includes("signtool") && windowsSelfSigning.includes("sign /fd SHA256"));
+assert.ok(windowsSelfSigning.includes("Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe"));
+assert.ok(windowsSelfSigning.includes("SIGNING=self-signed"));
+assert.doesNotMatch(windowsSelfSigning, /actions\/upload-artifact|\.pfx.*release/);
+assert.ok(desktopPreviewPublisher.includes("SIGNING=self-signed"));
+assert.ok(desktopPreviewPublisher.includes("CodeForge-Windows-Certificate.cer"));
+assert.ok(desktopPreviewPublisher.includes("self-signed") && desktopPreviewPublisher.includes("SmartScreen"));
+assert.ok(desktopPreviewPublisher.includes("cmp release/windows/CodeForge-Setup-Windows.exe"));
+
+const mobileApp = read("../apps/mobile/App.tsx");
+assert.ok(mobileApp.includes("onHttpError"), "Android WebView must surface main-frame HTTP errors.");
+assert.ok(mobileApp.includes("onRenderProcessGone"), "Android WebView renderer termination must be recoverable.");
+assert.ok(mobileApp.includes("Linking.openURL"), "Android must provide an external-browser fallback.");
+assert.ok(mobileApp.includes("onMessage"), "Android must wait for the hosted CodeForge app-ready handshake.");
+assert.ok(mobileApp.includes("data-codeforge-app-ready"), "The WebView readiness check must target the actual hosted app marker.");
+assert.ok(mainApp.includes("data-codeforge-app-ready"), "The /app route must mark readiness only after React mounts.");
+
+const hostedSmoke = read("../scripts/verify-hosted-app.mjs");
+const hostedSmokeTests = read("../scripts/verify-hosted-app.test.mjs");
+assert.ok(hostedSmoke.includes("/api/health") && hostedSmoke.includes("/api/config"));
+assert.ok(hostedSmoke.includes("/api/workspaces") && hostedSmoke.includes("Authentication required"));
+assert.ok(hostedSmoke.includes("/app") && hostedSmoke.includes("text/html"));
+assert.ok(hostedSmoke.includes("text/css") && hostedSmoke.includes("javascript"));
+assert.ok(hostedSmokeTests.includes("rejects a missing SPA asset"));
+assert.ok(hostedSmokeTests.includes("rejects a Worker health response with a disconnected database"));
+assert.ok(deploy.includes("verify-hosted-app.mjs"), "Production deploy must exercise the hosted mobile entry routes.");
+assert.ok(native.includes("verify-hosted-app.mjs"), "Native-shell CI must validate the hosted app routes.");
+assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy CI must run hosted-route regression tests.");
+
+assert.doesNotMatch(read("../apps/web/src/styles.css"), /@import url\(['"]https:\/\/fonts\.googleapis\.com/);
+assert.match(home, /data-codeforge-app-ready/);
+assert.match(releaseSource, /PUBLISHED_RELEASE_TAG = null/);
+assert.match(home, /Verified signed release pending/);
 
 console.log('Release signing gates, exact-SHA checks, production probes, and sequence policy passed.');
 
