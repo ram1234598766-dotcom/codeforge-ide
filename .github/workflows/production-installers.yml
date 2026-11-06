@@ -426,6 +426,24 @@ jobs:
             printf 'CERT_SHA256=%s\n' "$CERT_SHA256"
           } > release/BUILD-METADATA.txt
           rm -f "$RUNNER_TEMP/CodeForge-aligned.apk"
+      - name: Enable KVM for production APK emulator verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+      - name: Install and launch production-signed APK in disposable emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-linux-hw-accel: false
+          disable-animations: true
+          script: bash scripts/android-install-smoke.sh release/CodeForge.apk
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-android-apk
