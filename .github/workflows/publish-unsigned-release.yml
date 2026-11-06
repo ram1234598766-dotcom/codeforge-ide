@@ -1,0 +1,165 @@
+name: Publish CodeForge v1.0.26 unsigned preview release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-unsigned-release.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: codeforge-v1-0-26-unsigned-release
+  cancel-in-progress: false
+
+env:
+  SOURCE_RUN_ID: 42230415496
+  SOURCE_SHA: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b
+  RELEASE_TAG: v1.0.26
+
+jobs:
+  publish:
+    name: Verify provenance and publish explicitly unsigned APK and EXE
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Verify exact source revision
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Download Android build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: codeforge-android-apk
+          path: release/android
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: codeforge-windows-installer
+          path: release/windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Validate unsigned metadata, package, checksums, and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release/android/CodeForge.apk
+          test -s release/windows/CodeForge-Setup-Windows.exe
+          test -s release/android/SHA256-Android.txt
+          test -s release/windows/SHA256-Windows.txt
+          test -s release/android/ANDROID-SIGNING-METADATA.txt
+          test -s release/windows/WINDOWS-SIGNING-METADATA.txt
+          test -s release/android/BUILD-METADATA.txt
+          test -s release/windows/BUILD-METADATA.txt
+          test -s release/android/APK-METADATA.txt
+
+          grep -Fx "SIGNING=unsigned" release/android/ANDROID-SIGNING-METADATA.txt
+          grep -Fx "SIGNING=unsigned" release/windows/WINDOWS-SIGNING-METADATA.txt
+          grep -Fx "SIGNING=unsigned" release/android/BUILD-METADATA.txt
+          grep -Fx "SIGNING=unsigned" release/windows/BUILD-METADATA.txt
+          grep -Fx "VERSION=1.0.26" release/android/BUILD-METADATA.txt
+          grep -Fx "VERSION=1.0.26" release/windows/BUILD-METADATA.txt
+          grep -Fx "COMMIT=$SOURCE_SHA" release/android/BUILD-METADATA.txt
+          grep -Fx "COMMIT=$SOURCE_SHA" release/windows/BUILD-METADATA.txt
+          grep -Fx "WORKFLOW_RUN_ID=$SOURCE_RUN_ID" release/android/BUILD-METADATA.txt
+          grep -Fx "WORKFLOW_RUN_ID=$SOURCE_RUN_ID" release/windows/BUILD-METADATA.txt
+          grep -q "^package: name='com.codeforge.ide' versionCode='26' versionName='1.0.26'" release/android/APK-METADATA.txt
+
+          (cd release/android && sha256sum -c SHA256-Android.txt)
+          (cd release/windows && sha256sum -c SHA256-Windows.txt)
+
+          mkdir -p release/download-check
+          cp release/android/SHA256-Android.txt release/download-check/
+          cp release/windows/SHA256-Windows.txt release/download-check/
+          cat release/android/SHA256-Android.txt release/windows/SHA256-Windows.txt > release/SHA256SUMS.txt
+
+          {
+            echo "# CodeForge v1.0.26 — UNSIGNED preview release"
+            echo
+            echo "**Both installers in this release are intentionally unsigned.**"
+            echo "The Android APK has no production Android signing certificate, and the Windows EXE has no Authenticode signature."
+            echo
+            echo "## Downloads"
+            echo "- `CodeForge.apk` — Android package, version code 26, package `com.codeforge.ide`."
+            echo "- `CodeForge-Setup-Windows.exe` — Windows NSIS installer."
+            echo
+            echo "## Important installation warnings"
+            echo "- Windows may display an unknown-publisher or Microsoft SmartScreen warning because the installer is unsigned."
+            echo "- Android may block installation or show an unknown-source warning. Only approve installation when you trust the file and its source."
+            echo "- No publisher identity or code-signing authenticity is provided by these files. Verify the SHA-256 values in `SHA256SUMS.txt` before installing."
+            echo
+            echo "## Feature status"
+            echo "The current desktop and Android shells still load the hosted CodeForge workspace. Native Node.js, Python, Linux terminal, and autonomous test-and-repair capabilities are not included in this preview build."
+            echo
+            echo "## Build provenance"
+            echo "- Source commit: `$SOURCE_SHA`"
+            echo "- Production installer workflow run: `$SOURCE_RUN_ID`"
+            echo "- Release tag: `$RELEASE_TAG`"
+            echo
+            echo "## SHA-256"
+            echo "```text"
+            cat release/SHA256SUMS.txt
+            echo "```"
+          } > release/RELEASE-NOTES.md
+
+      - name: Ensure this release tag has not already been published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists; refusing to overwrite a public release."
+            exit 1
+          fi
+
+      - name: Publish public unsigned release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ env.SOURCE_SHA }}
+          name: CodeForge v1.0.26 — UNSIGNED preview release
+          body_path: release/RELEASE-NOTES.md
+          draft: false
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: |
+            release/android/CodeForge.apk
+            release/windows/CodeForge-Setup-Windows.exe
+            release/android/APK-METADATA.txt
+            release/android/ANDROID-SIGNING-METADATA.txt
+            release/windows/WINDOWS-SIGNING-METADATA.txt
+            release/android/BUILD-METADATA.txt
+            release/windows/BUILD-METADATA.txt
+            release/android/SHA256-Android.txt
+            release/windows/SHA256-Windows.txt
+            release/SHA256SUMS.txt
+            release/RELEASE-NOTES.md
+
+      - name: Verify public release assets and checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json isDraft,assets > release/published-release.json
+          jq -e '.isDraft == false and any(.assets[]; .name == "CodeForge.apk" and .size > 0) and any(.assets[]; .name == "CodeForge-Setup-Windows.exe" and .size > 0) and any(.assets[]; .name == "SHA256SUMS.txt" and .size > 0)' release/published-release.json >/dev/null
+          mkdir -p release/public-downloads
+          gh release download "$RELEASE_TAG" --pattern CodeForge.apk --pattern CodeForge-Setup-Windows.exe --dir release/public-downloads
+          cmp release/android/CodeForge.apk release/public-downloads/CodeForge.apk
+          cmp release/windows/CodeForge-Setup-Windows.exe release/public-downloads/CodeForge-Setup-Windows.exe
+          (cd release/public-downloads && sha256sum -c ../SHA256SUMS.txt)
+          echo "Published $RELEASE_TAG with both explicitly unsigned installer files and verified public download checksums." >> "$GITHUB_STEP_SUMMARY"

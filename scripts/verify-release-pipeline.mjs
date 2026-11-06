@@ -13,6 +13,7 @@ const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
 const deploy = read('../.github/workflows/deploy-worker.yml');
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
+const unsignedPublisher = read('../.github/workflows/publish-unsigned-release.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
 

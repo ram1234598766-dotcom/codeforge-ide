@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { getReleaseDownloadUrl, VERIFIED_RELEASE_TAG } from './release';
+import { getReleaseDownloadUrl, PUBLISHED_RELEASE_TAG } from './release';
 
 const releaseBase = 'https://github.com/ram1234598766-dotcom/codeforge-ide/releases/download';
 
-describe('verified native release downloads', () => {
-  it('keeps public downloads disabled until a verified release is explicitly pinned', () => {
-    expect(VERIFIED_RELEASE_TAG).toBeNull();
-    expect(getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')).toBeNull();
-    expect(getReleaseDownloadUrl('CodeForge.apk')).toBeNull();
+describe('published unsigned native release downloads', () => {
+  it('pins downloads to the explicitly published versioned release', () => {
+    expect(PUBLISHED_RELEASE_TAG).toBe('v1.0.26');
+    expect(getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')).toBe(
+      releaseBase + '/v1.0.26/CodeForge-Setup-Windows.exe',
+    );
+    expect(getReleaseDownloadUrl('CodeForge.apk')).toBe(
+      releaseBase + '/v1.0.26/CodeForge.apk',
+    );
   });
 
-  it('builds immutable URLs for both allowlisted native assets', () => {
+  it('builds immutable URLs for explicitly supplied version tags', () => {
     expect(getReleaseDownloadUrl('CodeForge-Setup-Windows.exe', 'v1.0.42')).toBe(
       releaseBase + '/v1.0.42/CodeForge-Setup-Windows.exe',
     );
