@@ -20,3 +20,9 @@ cd android
 ```
 
 Production release signing uses the persistent Android keystore stored in GitHub Actions secrets. Never commit the keystore or its passwords. Android app updates must be signed with the same key.
+
+## Node.js and Expo diagnostics
+
+This project uses Expo SDK 58 and React Native 0.88. Use Node.js 22.13.x or newer on the 22.x line, Node.js 24.3.x or newer on the 24.x line, or Node.js 26 or newer. Odd-numbered Node.js major versions are not supported by Expo SDK 58.
+
+Run `npx expo-doctor` from `apps/mobile` after changing Expo or React Native dependencies and before building the native app. The GitHub Actions native-shell workflow runs this diagnostic as part of Android validation.
