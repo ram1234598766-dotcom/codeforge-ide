@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "apps/web/src/main.tsx"
+      - "apps/mobile/App.tsx"
+      - "scripts/android-install-smoke.sh"
+      - "scripts/verify-android-webview.mjs"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
       - ".github/workflows/native-shells-ci.yml"
@@ -58,5 +61,7 @@ jobs:
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
       - name: Test D1 migrations on a disposable SQLite fixture
         run: python3 scripts/test-d1-migrations.py
+      - name: Verify Android WebView readiness contract
+        run: node scripts/verify-android-webview.mjs
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs

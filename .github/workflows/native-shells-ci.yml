@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify Android WebView readiness contract
+        run: node scripts/verify-android-webview.mjs
       - name: Verify exact source revision
         shell: bash
         env:
