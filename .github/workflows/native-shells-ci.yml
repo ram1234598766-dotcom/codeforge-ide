@@ -110,7 +110,7 @@ jobs:
           disable-linux-hw-accel: false
           disable-animations: true
           script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: codeforge-android-ci-apks
           path: release/*
@@ -213,7 +213,7 @@ jobs:
           if ($uninstall.ExitCode -ne 0) { throw "Silent NSIS uninstall failed with exit code $($uninstall.ExitCode)." }
           if (Test-Path $installed.FullName) { throw "The Tauri main binary remained after uninstall smoke test." }
           "Windows NSIS install/uninstall smoke test passed. SHA-256: $hash" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: codeforge-windows-ci-installer
           path: release/*
