@@ -108,7 +108,7 @@ jobs:
             echo
             echo "## Important installation warnings"
             echo "- Windows may display an unknown-publisher or Microsoft SmartScreen warning because the installer is unsigned."
-            echo "- Android may block installation or show an unknown-source warning. Only approve installation when you trust the file and its source."
+            echo "- The Android APK has no package signature and cannot be installed by Android as published. It is provided for inspection/testing only; device installation requires a separately signed APK."
             echo "- No publisher identity or code-signing authenticity is provided by these files. Verify the SHA-256 values in `SHA256SUMS.txt` before installing."
             echo
             echo "## Feature status"
@@ -125,13 +125,16 @@ jobs:
             echo "```"
           } > release/RELEASE-NOTES.md
 
-      - name: Ensure this release tag has not already been published
+      - name: Ensure this is the expected CodeForge release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "::error::Release $RELEASE_TAG already exists; refusing to overwrite a public release."
-            exit 1
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json tagName,name > release/existing-release.json 2>/dev/null; then
+            jq -e --arg tag "$RELEASE_TAG" --arg name "CodeForge v1.0.26 — UNSIGNED preview release" '.tagName == $tag and .name == $name' release/existing-release.json >/dev/null
+            echo "Updating the already-published CodeForge unsigned release with the clarified Android installability warning."
+          else
+            echo "Creating the initial public CodeForge unsigned release."
           fi
 
       - name: Publish public unsigned release
@@ -144,6 +147,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             release/android/CodeForge.apk
