@@ -268,6 +268,8 @@ jobs:
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" > release/APK-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/APK-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/CodeForge-aligned.apk"
+      - name: Verify Android permission allowlist
+        run: node scripts/verify-android-permissions.mjs release/APK-METADATA.txt
       - name: Sign APK with durable production keystore
         id: android-signing-run
         if: steps.android-signing.outputs.configured == 'true'
