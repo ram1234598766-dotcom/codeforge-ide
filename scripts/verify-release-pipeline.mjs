@@ -343,7 +343,9 @@ assert.ok(desktopPreviewPublisher.includes('workflow_run:'), 'Desktop preview re
 assert.ok(!desktopPreviewPublisher.includes('  push:'), 'Desktop preview publication must be tied to completed installer runs only.');
 assert.match(installers, /^on:\s*push:\s*branches: \[main\]\s*workflow_dispatch:/m, 'Production installers must run on every main update so each update can produce a Windows preview.');
 assert.ok(desktopPreviewPublisher.includes('workflows: ["CodeForge production installers"]'));
-assert.ok(desktopPreviewPublisher.includes("github.event.workflow_run.conclusion == 'success'"));
+assert.ok(desktopPreviewPublisher.includes("if: github.event.workflow_run.head_branch == 'main'"), 'Desktop preview publisher must be restricted to main installer runs.');
+assert.ok(desktopPreviewPublisher.includes('.status == "completed"'), 'Desktop preview publisher must require a completed upstream run.');
+assert.ok(desktopPreviewPublisher.includes('WINDOWS_JOB_CONCLUSION') && desktopPreviewPublisher.includes('!= "success"'), 'Desktop preview publisher must reject a failed Windows build even if another matrix job succeeds.');
 assert.ok(desktopPreviewPublisher.includes("github.event.workflow_run.head_branch == 'main'"));
 assert.ok(desktopPreviewPublisher.includes('.head_sha == $sha'), 'The upstream artifact run must match the exact source SHA.');
 assert.ok(desktopPreviewPublisher.includes('COMMIT=$SOURCE_SHA'));
