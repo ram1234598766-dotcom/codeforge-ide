@@ -35,6 +35,7 @@ assert.ok(deploy.includes('test "$CONFIRM_PRODUCTION_DEPLOY" = "DEPLOY"'), 'Prod
 assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "false"'), 'D1 migrations must default to disabled.');
 assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
 assert.ok(deploy.includes('test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"'), 'D1 migrations must require separate confirmation.');
+assert.ok(deploy.includes('node scripts/verify-hosted-app.mjs'), 'Production deploy must verify the hosted SPA, APIs and assets after deployment.');
 assert.ok(deploy.includes("if: ${{ inputs.apply_d1_migrations == 'true' }}"), 'D1 migration steps must be opt-in.');
 assert.ok(!deploy.includes('wrangler@4 secret put'), 'Deployment workflow must not mutate Worker secrets.');
 assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
@@ -209,10 +210,6 @@ assert.ok(publisher.includes('EXPECTED_SHA: ${{ github.event.workflow_run.head_s
 assert.ok(deploy.includes('wrangler@4 deploy --dry-run --message "CodeForge commit $SOURCE_SHA"'));
 assert.ok(deploy.includes('wrangler@4 deploy --message "CodeForge commit $SOURCE_SHA"'));
 assert.ok(deploy.includes('SOURCE_SHA: ${{ github.sha }}'));
-assert.ok(deploy.includes('$BASE_URL/api/health'));
-assert.ok(deploy.includes('$BASE_URL/api/config'));
-assert.ok(deploy.includes('$BASE_URL/api/workspaces'));
-assert.match(deploy, /Probe production Worker and static assets/);
 
 const releaseSequenceFixtures = [
   { tag_name: 'v1.0.3', draft: false },
