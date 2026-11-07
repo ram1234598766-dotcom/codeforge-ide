@@ -285,7 +285,13 @@ try {
 }
 
 assert.match(publisher, /gh release download/);
-assert.doesNotMatch(home, /releases\/latest\/download|Self-signed installer/);
+assert.match(releaseSource, /PUBLISHED_RELEASE_TAG:\\s*string \\| null = null/);
+assert.match(releaseSource, /getReleaseDownloadUrl\\(asset: string\\)/);
+assert.match(releaseSource, /if \\(!tag \\|\\|/);
+assert.doesNotMatch(releaseSource, /tag: string =/);
+assert.match(home, /getReleaseDownloadUrl\\('CodeForge-Setup-Windows\\.exe'\\)/);
+assert.match(home, /getReleaseDownloadUrl\\('CodeForge\\.apk'\\)/);
+assert.doesNotMatch(home, /releases\\/latest\\/download|Self-signed installer/);
 
 
 const androidSigningStep = installers.slice(
