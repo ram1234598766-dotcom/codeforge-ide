@@ -38,4 +38,12 @@ assert.match(smoke, /adb logcat -c/, 'Emulator smoke must clear stale readiness 
 assert.match(smoke, /screencap -p/, 'Emulator smoke must preserve a failure screenshot for diagnosis.');
 assert.match(smoke, /CodeForgeWebView/, 'Emulator smoke must collect only the sanitized CodeForge WebView diagnostic tag.');
 assert.ok(workflow.includes('if: always()'), 'Native CI must upload diagnostics even when Android WebView smoke fails.');
+
+assert.match(workflow, /unzip -l "\\$RELEASE_APK" \\| grep -q "assets\\/index\\.android\\.bundle"/, 'The release APK used for emulator smoke must contain the embedded React Native JS bundle.');
+assert.match(workflow, /name: Sign release APK with ephemeral CI smoke key/, 'The emulator smoke APK must be signed with a disposable CI-only key, not production credentials.');
+assert.match(workflow, /apksigner" sign[\\s\\S]*?--out "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The CI-only signed smoke APK must be generated outside the release artifact directory.');
+assert.match(workflow, /script: bash scripts\\/android-install-smoke\\.sh "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The Android emulator must install the bundled release variant.');
+assert.doesNotMatch(workflow, /script: bash scripts\\/android-install-smoke\\.sh release\\/CodeForge-debug\\.apk/, 'The debug variant must not be used for a hosted-WebView smoke without Metro.');
+assert.match(workflow, /name: Remove ephemeral Android smoke signing material[\\s\\S]*?rm -f "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The CI-only smoke APK and temporary signing material must be removed after the emulator test.');
+
 console.log('Android WebView startup, recovery, rendered-content readiness, and failure-diagnostics contract passed.');
