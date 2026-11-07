@@ -146,7 +146,7 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs CodeForge.apk | tee ANDROID-SIGNING-VERIFICATION-RELEASE.txt
 
           EXPECTED_ANDROID="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
-          ACTUAL_ANDROID="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' ANDROID-SIGNING-VERIFICATION-RELEASE.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          ACTUAL_ANDROID="$(node ../../scripts/extract-apksigner-cert.mjs ANDROID-SIGNING-VERIFICATION-RELEASE.txt)"
           METADATA_ANDROID="$(sed -n 's/^CERT_SHA256=//p' ANDROID-SIGNING-METADATA.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
           [[ "$EXPECTED_ANDROID" =~ ^[A-F0-9]{64}$ ]]
           test "$ACTUAL_ANDROID" = "$EXPECTED_ANDROID"
