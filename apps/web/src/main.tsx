@@ -6,7 +6,7 @@ import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { apiRequest, initializeSupabase, supabase, supabaseConfig } from './lib/supabase';
 import { getHostedAppRedirectUrl, getSupabaseRedirectUrl } from './lib/supabase-config';
-const PUBLISHED_RELEASE_TAG: string | null = null;
+import { getReleaseDownloadUrl, PUBLISHED_RELEASE_TAG } from './lib/release';
 import { getFriendlyAuthError, readAuthRedirectState, type AuthRedirectState } from './lib/auth-flow';
 import {
   createWorkspace, deleteWorkspace, deleteWorkspaceFile, getWorkspaceState, listWorkspaces, listWorkspaceFiles, renameWorkspace, saveWorkspaceFile, saveWorkspaceState, getProfile, updateProfile, listWorkspaceMembers, createWorkspaceInvite, removeWorkspaceMember, acceptWorkspaceInvite,
@@ -252,8 +252,8 @@ function AuthScreen({
 
 function LandingPage() {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
-  const windowsDownloadUrl: string | null = null;
-  const androidDownloadUrl: string | null = null;
+  const windowsDownloadUrl = getReleaseDownloadUrl('CodeForge-Setup-Windows.exe');
+  const androidDownloadUrl = getReleaseDownloadUrl('CodeForge.apk');
   const code = activeTab === 'editor'
     ? `import { createApp } from './app';\n\nconst workspace = createApp({\n  name: 'my-next-project',\n  ai: { provider: 'workers-ai' },\n  sync: { enabled: true },\n});\n\nworkspace.run();`
     : `<main class="welcome">\n  <span class="eyebrow">YOUR NEXT IDEA STARTS HERE</span>\n  <h1>Build without limits.</h1>\n  <p>One workspace. Desktop power. Mobile freedom.</p>\n  <button>Start building →</button>\n</main>`;
