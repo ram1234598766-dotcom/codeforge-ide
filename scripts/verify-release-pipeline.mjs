@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { latestPublishedRunNumber, shouldPublishRelease, main as checkReleaseSequence } from './check-release-sequence.mjs';
 import { blockedAndroidPermissions } from './verify-android-permissions.mjs';
+import { extractApksignerCertificateFingerprint } from './extract-apksigner-cert.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
@@ -54,6 +55,20 @@ const publisher = read('../.github/workflows/publish-versioned-release.yml');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
+
+const apksignerFixtureFingerprint = 'F96C203D70D2A90D853E35652D7C63758122F5C4B3EE674978F919C3F814F897';
+assert.equal(
+  extractApksignerCertificateFingerprint('Signer #1 certificate SHA-256 digest: ' + apksignerFixtureFingerprint.toLowerCase()),
+  apksignerFixtureFingerprint,
+  'The APK signer parser must accept the legacy apksigner output format.',
+);
+assert.equal(
+  extractApksignerCertificateFingerprint('V3.0 Signer: certificate SHA-256 digest: ' + apksignerFixtureFingerprint.toLowerCase()),
+  apksignerFixtureFingerprint,
+  'The APK signer parser must accept current apksigner V3 output.',
+);
+assert.throws(() => extractApksignerCertificateFingerprint('Verified using v1 scheme: false'), /No supported signer certificate SHA-256 digest/);
+assert.throws(() => extractApksignerCertificateFingerprint('V3.0 Signer: certificate SHA-256 digest: invalid'), /Invalid signer certificate SHA-256 digest/);
 
 assert.match(installers, /SIGNPATH_API_TOKEN/);
 for (const setting of [
@@ -303,6 +318,8 @@ assert.ok(androidSigningStep.includes("--ks-type"), "apksigner must use the dete
 assert.ok(androidSigningStep.includes("trap 'rm -f"), "Temporary release keystore files must be deleted on every exit.");
 assert.ok(androidSigningStep.includes('apksigner" verify --verbose --Werr --print-certs'), "The final APK must pass strict signature verification.");
 assert.ok(androidSigningStep.includes('zipalign" -c 4 release/CodeForge.apk'), "The final signed APK must remain zip-aligned.");
+assert.ok(androidSigningStep.includes('extract-apksigner-cert.mjs release/ANDROID-SIGNING-VERIFICATION.txt'), 'The production build must parse both legacy and current apksigner signer lines.');
+assert.doesNotMatch(androidSigningStep, /Signer #1 certificate SHA-256 digest/);
 assert.doesNotMatch(androidSigningStep, /continue-on-error: true/);
 assert.doesNotMatch(installers, /name: Stage unsigned APK when durable signing is unavailable/);
 assert.ok(installers.includes("The Android production signing secrets are required"));
@@ -368,6 +385,8 @@ assert.ok(publisher.includes('cmp release/windows/CodeForge-Setup-Windows.exe'))
 assert.ok(publisher.includes('cmp release/android/CodeForge.apk'));
 assert.ok(publisher.includes('test "$ACTUAL_WINDOWS" = "$EXPECTED_WINDOWS"'));
 assert.ok(publisher.includes('test "$ACTUAL_ANDROID" = "$EXPECTED_ANDROID"'));
+assert.ok(publisher.includes('extract-apksigner-cert.mjs ANDROID-SIGNING-VERIFICATION-RELEASE.txt'), 'The independent release verifier must use the shared apksigner parser.');
+assert.doesNotMatch(publisher, /Signer #1 certificate SHA-256 digest/);
 assert.ok(desktopPreviewPublisher.includes('if: ${{ false }}'), 'Standalone self-signed Windows preview releases must be disabled.');
 assert.ok(!desktopPreviewPublisher.includes('workflow_run:') && !desktopPreviewPublisher.includes('contents: write'), 'The retired Windows preview workflow must have no publication trigger or write permission.');
 
