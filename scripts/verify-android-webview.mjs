@@ -49,9 +49,9 @@ assert.ok(workflow.includes('unzip -l "$RELEASE_APK" | grep -q "assets/index.and
 assert.ok(workflow.includes('BUNDLE_SHA_BEFORE') && workflow.includes('BUNDLE_SHA_AFTER'), 'The signed CI smoke APK must preserve the exact embedded React Native bundle.');
 assert.ok(workflow.includes('aapt" dump badging "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The signed CI smoke APK must retain the CodeForge package identity.');
 assert.match(workflow, /name: Sign release APK with ephemeral CI smoke key/, 'The emulator smoke APK must be signed with a disposable CI-only key, not production credentials.');
-assert.match(workflow, /apksigner" sign[\\s\\S]*?--out "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The CI-only signed smoke APK must be generated outside the release artifact directory.');
-assert.match(workflow, /script: bash scripts\\/android-install-smoke\\.sh "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The Android emulator must install the bundled release variant.');
-assert.doesNotMatch(workflow, /script: bash scripts\\/android-install-smoke\\.sh release\\/CodeForge-debug\\.apk/, 'The debug variant must not be used for a hosted-WebView smoke without Metro.');
-assert.match(workflow, /name: Remove ephemeral Android smoke signing material[\\s\\S]*?rm -f "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The CI-only smoke APK and temporary signing material must be removed after the emulator test.');
+assert.ok(workflow.includes('apksigner" sign') && workflow.includes('--out "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The CI-only signed smoke APK must be generated outside the release artifact directory.');
+assert.ok(workflow.includes('script: bash scripts/android-install-smoke.sh "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The Android emulator must install the bundled release variant.');
+assert.ok(!workflow.includes('script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk'), 'The debug variant must not be used for a hosted-WebView smoke without Metro.');
+assert.ok(workflow.includes('name: Remove ephemeral Android smoke signing material') && workflow.includes('rm -f "$RUNNER_TEMP/CodeForge-smoke.apk" "$RUNNER_TEMP/codeforge-android-smoke.jks"'), 'The CI-only smoke APK and temporary signing material must be removed after the emulator test.');
 
 console.log('Android WebView startup, recovery, rendered-content readiness, and failure-diagnostics contract passed.');
