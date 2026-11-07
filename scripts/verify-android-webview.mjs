@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../apps/mobile/App.tsx', import.meta.url), 'utf8');
 const smoke = readFileSync(new URL('./android-install-smoke.sh', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/native-shells-ci.yml', import.meta.url), 'utf8');
 assert.match(app, /onHttpError=/, 'WebView must surface HTTP failures.');
 assert.match(app, /onRenderProcessGone=/, 'WebView must recover from renderer termination.');
 assert.match(app, /onContentProcessDidTerminate=/, 'WebView must recover from content-process termination.');
@@ -23,4 +24,9 @@ assert.match(smoke, /CodeForge app ready/, 'Emulator smoke must wait for the hos
 assert.match(smoke, /Welcome back\./, 'Emulator smoke must independently confirm that the hosted Android web page rendered its real sign-in screen.');
 assert.match(smoke, /Connect Supabase Auth/, 'Emulator smoke must recognize the explicit missing-auth-configuration screen as rendered application content.');
 assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit sanitized UI diagnostics when hosted content does not render.');
+assert.match(smoke, /ReactNativeJS:V/, 'Emulator smoke must independently observe the native WebView readiness bridge.');
+assert.match(smoke, /adb logcat -c/, 'Emulator smoke must clear stale readiness messages before launching the app.');
+assert.match(smoke, /screencap -p/, 'Emulator smoke must preserve a failure screenshot for diagnosis.');
+assert.match(smoke, /CodeForgeWebView/, 'Emulator smoke must collect only the sanitized CodeForge WebView diagnostic tag.');
+assert.match(workflow, /if: always\\(\\)/, 'Native CI must upload diagnostics even when Android WebView smoke fails.');
 console.log('Android WebView startup, recovery, accessibility, and hosted-app smoke contract passed.');
