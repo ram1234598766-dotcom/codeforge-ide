@@ -73,11 +73,10 @@ jobs:
             $missing += 'main-branch-only-signing'
           }
           if ($missing.Count -gt 0) {
-            "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-            Write-Host "::notice::Windows installer will remain unsigned; SignPath signing is unavailable or not permitted for this ref. Missing: $($missing -join ', ')"
-          } else {
-            "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "::error::Windows production signing requires an approved SignPath project, trusted release policy, and all required GitHub secrets/variables. Missing: $($missing -join ', ')"
+            throw "Refusing to build or stage a Windows production installer without durable SignPath signing."
           }
+          "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Upload unsigned installer to GitHub for SignPath
         id: upload-unsigned-windows-installer
         if: steps.windows-signing.outputs.configured == 'true'
@@ -136,6 +135,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows Authenticode policy verification failed." }
           $certificatePath = Join-Path (Get-Location) "release/CodeForge-Windows-Certificate.cer"
           Export-Certificate -Cert $signature.SignerCertificate -FilePath $certificatePath -Type CERT -Force | Out-Null
+          $certificateFileHash = (Get-FileHash $certificatePath -Algorithm SHA256).Hash.ToLowerInvariant()
           @(
             "SIGNING=durable",
             "SIGNATURE_STATUS=$($signature.Status)",
@@ -144,6 +144,7 @@ jobs:
             "SUBJECT=$($signature.SignerCertificate.Subject)",
             "ISSUER=$($signature.SignerCertificate.Issuer)",
             "THUMBPRINT=$actualThumbprint",
+            "CERT_FILE_SHA256=$certificateFileHash",
             "NOT_BEFORE=$($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o'))",
             "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
           ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
@@ -152,17 +153,26 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           if (-not (Test-Path release/WINDOWS-SIGNING-METADATA.txt)) {
-            @("SIGNING=unsigned", "SIGNATURE_STATUS=not-signed") | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
+            throw "A signed Windows installer is required; unsigned production artifacts are not uploaded."
+          }
+          $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
+          if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate) {
+            throw "Windows Authenticode verification failed: $($signature.Status)"
+          }
+          $signing = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING=*" } | Select-Object -First 1
+          if ($signing -ne "SIGNING=durable") {
+            throw "A durable, publicly trusted SignPath-signed Windows installer is required; preview/self-signed output is not a production release."
+          }
+          $signingProvider = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING_PROVIDER=*" } | Select-Object -First 1
+          $signatureStatus = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNATURE_STATUS=*" } | Select-Object -First 1
+          if ($signingProvider -ne "SIGNING_PROVIDER=SignPath Foundation" -or $signatureStatus -ne "SIGNATURE_STATUS=Valid") {
+            throw "Windows signing provider or Authenticode verification state is not approved for production."
+          }
+          if (-not (Test-Path release/CodeForge-Windows-Certificate.cer)) {
+            throw "The public SignPath signer certificate is missing from the production artifact."
           }
           $hash = (Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows.txt -Encoding ascii -NoNewline
-          $signing = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING=*" } | Select-Object -First 1
-          if ($signing -eq "SIGNING=unsigned") {
-            $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
-            if ($signature.Status -ne "NotSigned") {
-              throw "Windows installer is marked unsigned, but Authenticode verification returned $($signature.Status)."
-            }
-          }
           @(
             "COMMIT=$env:GITHUB_SHA",
             "WORKFLOW_RUN_ID=$env:GITHUB_RUN_ID",
@@ -173,7 +183,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-windows-installer
-          path: release/*
+          path: |
+            release/CodeForge-Setup-Windows.exe
+            release/CodeForge-Windows-Certificate.cer
+            release/WINDOWS-SIGNING-METADATA.txt
+            release/BUILD-METADATA.txt
+            release/SHA256-Windows.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -215,19 +230,12 @@ jobs:
           [[ -n "$ANDROID_KEY_ALIAS" ]] || missing+=("ANDROID_KEY_ALIAS secret")
           [[ -n "$ANDROID_KEY_PASSWORD" ]] || missing+=("ANDROID_KEY_PASSWORD secret")
           [[ -n "$ANDROID_SIGNING_CERT_SHA256" ]] || missing+=("ANDROID_SIGNING_CERT_SHA256 repository variable")
-          if (("${#missing[@]}" > 0)); then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Android production signing is unavailable. Missing configuration names: ${missing[*]}. Values are not printed."
-            {
-              echo "## Android production signing configuration"
-              echo
-              echo "Missing names: ${missing[*]}"
-              echo "No credential values are printed or exposed."
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-            echo "All required Android production signing configuration names are present."
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" || -z "$ANDROID_KEYSTORE_PASSWORD" || -z "$ANDROID_KEY_ALIAS" || -z "$ANDROID_KEY_PASSWORD" || -z "$ANDROID_SIGNING_CERT_SHA256" ]]; then
+            echo "::error::The Android production signing secrets are required. One or more expected secret names or the signing fingerprint variable are missing. Secret values are never printed."
+            exit 1
           fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "All required Android production signing configuration names are present."
       - name: Install Expo dependencies
         working-directory: apps/mobile
         run: npm install --include=optional --no-audit --no-fund --package-lock=false
@@ -273,8 +281,6 @@ jobs:
         run: node scripts/verify-android-permissions.mjs release/APK-METADATA.txt
       - name: Sign APK with durable production keystore
         id: android-signing-run
-        if: steps.android-signing.outputs.configured == 'true'
-        continue-on-error: true
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -285,6 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           KEYSTORE="$RUNNER_TEMP/codeforge-production-release.jks"
+          trap 'rm -f "$KEYSTORE"' EXIT
           if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"; then
             echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64-encoded keystore data."
             exit 1
@@ -296,20 +303,66 @@ jobs:
           KEYSTORE_BYTES="$(wc -c < "$KEYSTORE" | tr -d '[:space:]')"
           echo "Decoded Android keystore size: $KEYSTORE_BYTES bytes"
           KEYSTORE_LIST="$RUNNER_TEMP/codeforge-keystore-list.txt"
-          KEYTOOL_ERROR="$RUNNER_TEMP/codeforge-keytool-error.txt"
-          if ! keytool -list -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_LIST" 2> "$KEYTOOL_ERROR"; then
-            KEYTOOL_DIAGNOSTIC="$(head -n 1 "$KEYTOOL_ERROR" | cut -c1-240)"
-            echo "::error::The decoded Android keystore could not be opened. Verify that ANDROID_KEYSTORE_BASE64 contains the complete keystore bytes and ANDROID_KEYSTORE_PASSWORD is the matching store password. Safe keytool diagnostic: ${KEYTOOL_DIAGNOSTIC:-no diagnostic returned}"
+          KEYSTORE_DIAGNOSTIC="$RUNNER_TEMP/codeforge-keytool-diagnostic.txt"
+          KEYSTORE_MAGIC="$(od -An -tx1 -N4 "$KEYSTORE" | tr -d '[:space:]')"
+          case "$KEYSTORE_MAGIC" in
+            feedfeed) KEYSTORE_TYPE="JKS" ;;
+            30*) KEYSTORE_TYPE="PKCS12" ;;
+            *) KEYSTORE_TYPE="unknown" ;;
+          esac
+          echo "Decoded Android keystore container: $KEYSTORE_TYPE (magic=$KEYSTORE_MAGIC, bytes=$KEYSTORE_BYTES)"
+          STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+          KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          if [[ "$KEYSTORE_TYPE" == "unknown" ]]; then
+            for candidate_type in JKS PKCS12; do
+              if keytool -list -storetype "$candidate_type" -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+                KEYSTORE_TYPE="$candidate_type"
+                break
+              elif keytool -list -storetype "$candidate_type" -keystore "$KEYSTORE" -storepass "$ANDROID_KEY_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+                KEYSTORE_TYPE="$candidate_type"
+                STORE_PASSWORD="$ANDROID_KEY_PASSWORD"
+                KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+                echo "::warning::The keystore opened only when the two Android password secrets were swapped. Using the validated mapping without printing either value."
+                break
+              fi
+            done
+          elif ! keytool -list -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE" -storepass "$ANDROID_KEYSTORE_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+            if keytool -list -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE" -storepass "$ANDROID_KEY_PASSWORD" > "$KEYSTORE_DIAGNOSTIC" 2>&1; then
+              STORE_PASSWORD="$ANDROID_KEY_PASSWORD"
+              KEY_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+              echo "::warning::The keystore opened only when the two Android password secrets were swapped. Using the validated mapping without printing either value."
+            else
+              KEYSTORE_TYPE="invalid"
+            fi
+          fi
+          export CODEFORGE_STORE_PASSWORD="$STORE_PASSWORD"
+          export CODEFORGE_KEY_PASSWORD="$KEY_PASSWORD"
+          if [[ "$KEYSTORE_TYPE" == "unknown" || "$KEYSTORE_TYPE" == "invalid" ]]; then
+            KEYTOOL_DIAGNOSTIC="$(python3 - "$KEYSTORE_DIAGNOSTIC" <<'PY'
+          import os
+          import pathlib
+          import sys
+          diagnostic = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          for name in ("ANDROID_KEYSTORE_BASE64", "ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_PASSWORD", "ANDROID_KEY_ALIAS"):
+              secret = os.environ.get(name, "")
+              if secret:
+                  diagnostic = diagnostic.replace(secret, "[REDACTED]")
+          lines = [line.strip() for line in diagnostic.splitlines() if line.strip()]
+          print(" | ".join(lines[:2])[:240] or "no diagnostic returned")
+          PY
+          )"
+            echo "::error::The decoded Android keystore could not be opened. Container magic=$KEYSTORE_MAGIC; size=$KEYSTORE_BYTES bytes; detected type=$KEYSTORE_TYPE. Verify the original keystore bytes and matching store password. Safe keytool diagnostic: $KEYTOOL_DIAGNOSTIC"
             exit 1
           fi
-          echo "Android keystore opened successfully."
+          cp "$KEYSTORE_DIAGNOSTIC" "$KEYSTORE_LIST"
+          echo "Android keystore opened successfully as $KEYSTORE_TYPE."
           if ! awk -F, -v alias="$ANDROID_KEY_ALIAS" '$1 == alias { found=1 } END { exit !found }' "$KEYSTORE_LIST"; then
             echo "::error::The Android keystore opened, but ANDROID_KEY_ALIAS was not found in it. Verify the alias configured in repository secrets."
             exit 1
           fi
           echo "Configured Android key alias is present."
           EXPECTED_CERT="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')"
-          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | sha256sum | awk '{print toupper($1)}')"
+          ACTUAL_KEYSTORE_CERT="$(keytool -exportcert -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE" -alias "$ANDROID_KEY_ALIAS" -storepass "$STORE_PASSWORD" 2>/dev/null | sha256sum | awk '{print toupper($1)}')"
           echo "Android keystore certificate SHA-256: $ACTUAL_KEYSTORE_CERT"
           if [[ ! "$EXPECTED_CERT" =~ ^[A-F0-9]{64}$ ]]; then
             echo "::error::ANDROID_SIGNING_CERT_SHA256 must contain exactly 64 hexadecimal characters."
@@ -322,47 +375,33 @@ jobs:
           SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           if ! "$SDK_BUILD_TOOLS/apksigner" sign --verbose \
             --ks "$KEYSTORE" \
+            --ks-type "$KEYSTORE_TYPE" \
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
-            --key-pass env:ANDROID_KEY_PASSWORD \
+            --ks-pass env:CODEFORGE_STORE_PASSWORD \
+            --key-pass env:CODEFORGE_KEY_PASSWORD \
             --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"; then
             echo "::warning::ANDROID_KEY_PASSWORD did not unlock the signing key; retrying with the keystore password for single-password keystore formats."
             rm -f release/CodeForge.apk
             "$SDK_BUILD_TOOLS/apksigner" sign --verbose \
               --ks "$KEYSTORE" \
+              --ks-type "$KEYSTORE_TYPE" \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
-              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
-              --key-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --ks-pass env:CODEFORGE_STORE_PASSWORD \
+              --key-pass env:CODEFORGE_STORE_PASSWORD \
               --out release/CodeForge.apk "$RUNNER_TEMP/CodeForge-aligned.apk"
           fi
-          if ! "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt; then
+          if ! "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs release/CodeForge.apk | tee release/ANDROID-SIGNING-VERIFICATION.txt; then
             echo "::error::Android APK signature verification failed."
             exit 1
           fi
-          ACTUAL_SIGNER_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/ANDROID-SIGNING-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          "$SDK_BUILD_TOOLS/zipalign" -c 4 release/CodeForge.apk
+          ACTUAL_SIGNER_CERT="$(node scripts/extract-apksigner-cert.mjs release/ANDROID-SIGNING-VERIFICATION.txt)"
           if [[ -z "$ACTUAL_SIGNER_CERT" || "$ACTUAL_SIGNER_CERT" != "$EXPECTED_CERT" ]]; then
             echo "::error::The signed APK certificate does not match the configured production fingerprint."
             exit 1
           fi
-          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" > release/ANDROID-SIGNING-METADATA.txt
+          printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\nKEYSTORE_TYPE=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" "$KEYSTORE_TYPE" > release/ANDROID-SIGNING-METADATA.txt
           rm -f "$KEYSTORE"
-      - name: Stage unsigned APK when durable signing is unavailable
-        if: steps.android-signing.outputs.configured != 'true' || steps.android-signing-run.outcome != 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp "$RUNNER_TEMP/CodeForge-aligned.apk" release/CodeForge.apk
-          printf 'SIGNING=unsigned\nSIGNATURE_STATUS=not-signed\n' > release/ANDROID-SIGNING-METADATA.txt
-          if [[ "${{ steps.android-signing.outputs.configured }}" == "true" ]]; then
-            echo "Durable signing was attempted but failed validation. The artifact is retained as unsigned; public release remains blocked."
-          else
-            echo "Durable Android signing is not configured. The artifact is retained as unsigned; public release remains blocked."
-          fi
-          {
-            echo "## Android signing status"
-            echo
-            echo "The APK was built, but it is not marked as a production-signed artifact. The Android-only versioned release publisher will not publish it."
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: Record Android build metadata and checksum
         shell: bash
         env:
@@ -372,6 +411,10 @@ jobs:
           (cd release && sha256sum CodeForge.apk > SHA256-Android.txt)
           SIGNING="$(sed -n 's/^SIGNING=//p' release/ANDROID-SIGNING-METADATA.txt | head -n 1)"
           CERT_SHA256="$(sed -n 's/^CERT_SHA256=//p' release/ANDROID-SIGNING-METADATA.txt | head -n 1)"
+          if [[ "$SIGNING" != "durable" || ! "$CERT_SHA256" =~ ^[A-F0-9]{64}$ ]]; then
+            echo "::error::A durably signed APK with a verified certificate fingerprint is required; unsigned production APKs are not staged."
+            exit 1
+          fi
           {
             printf 'PACKAGE=com.codeforge.ide\n'
             printf 'VERSION=1.0.%s\n' "$BUILD_NUMBER"
@@ -383,6 +426,24 @@ jobs:
             printf 'CERT_SHA256=%s\n' "$CERT_SHA256"
           } > release/BUILD-METADATA.txt
           rm -f "$RUNNER_TEMP/CodeForge-aligned.apk"
+      - name: Enable KVM for production APK emulator verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+      - name: Install and launch production-signed APK in disposable emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-linux-hw-accel: false
+          disable-animations: true
+          script: bash scripts/android-install-smoke.sh release/CodeForge.apk
       - uses: actions/upload-artifact@v4
         with:
           name: codeforge-android-apk

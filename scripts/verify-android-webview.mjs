@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const app = readFileSync(new URL('../apps/mobile/App.tsx', import.meta.url), 'utf8');
+const webApp = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
+const smoke = readFileSync(new URL('./android-install-smoke.sh', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/native-shells-ci.yml', import.meta.url), 'utf8');
+
+assert.match(app, /onHttpError=/, 'WebView must surface HTTP failures.');
+assert.match(app, /onRenderProcessGone=/, 'WebView must recover from renderer termination.');
+assert.match(app, /onContentProcessDidTerminate=/, 'WebView must recover from content-process termination.');
+assert.match(app, /injectedJavaScript=/, 'WebView must verify that the hosted SPA rendered.');
+assert.ok(webApp.includes('if (authReady) {') && webApp.includes("rootElement?.setAttribute('data-codeforge-app-ready'"), 'The web app must set its readiness marker only after auth initialization completes.');
+assert.match(webApp, /\}, \[authReady\]\);/, 'The web readiness marker must track auth initialization state.');
+assert.ok(app.includes('legacyAuthScreenRendered'), 'Readiness must recognize the real auth screen on older deployed SPA builds.');
+assert.ok(app.includes('legacyWorkspaceRendered'), 'Readiness must recognize the real workspace shell on older deployed SPA builds.');
+assert.ok(!app.includes('appRoot && appRoot.children.length > 0'), 'A non-empty loading placeholder must not count as a rendered CodeForge app.');
+assert.ok(app.includes('accessible={true}'), 'The native WebView readiness label must be exposed to Android accessibility.');
+assert.ok(app.includes('readiness=ready path='), 'The native bridge must emit a sanitized readiness event for the emulator smoke.');
+assert.ok(app.includes('readiness=timeout'), 'The native bridge must emit a sanitized timeout diagnostic.');
+assert.match(app, /new MutationObserver\(/, 'WebView readiness must observe delayed SPA rendering.');
+assert.ok(app.includes('window.__CODEFORGE_READY_WATCH_STARTED'), 'Repeated readiness injections must not create duplicate observers.');
+assert.match(app, /onLoadEnd=\{event => \{[\s\S]*?injectJavaScript\(WEBVIEW_READY_SCRIPT\)/, 'WebView must retry its readiness probe after the main document finishes loading.');
+assert.match(app, /onMessage=/, 'WebView must receive the SPA readiness handshake.');
+assert.match(app, /CodeForge app ready/, 'WebView must expose an accessibility readiness signal.');
+assert.match(app, /Linking\.openURL/, 'Error state must offer an external-browser fallback.');
+assert.match(app, /canGoBack/, 'Back navigation must respect WebView history.');
+assert.doesNotMatch(app, /console\.(?:log|error)\(/, 'Diagnostics must not log URL query strings or auth data.');
+assert.match(smoke, /uiautomator dump/, 'Emulator smoke must inspect accessibility state.');
+assert.ok(smoke.includes("tr -d '\\r'"), 'UIAutomator output normalization must remove carriage returns only.');
+assert.ok(!smoke.includes("tr -d '\\\\r'"), 'UIAutomator output normalization must not delete literal r characters from readiness labels.');
+assert.match(smoke, /CodeForge app ready/, 'Emulator smoke must wait for the hosted-app readiness signal.');
+assert.match(smoke, /Welcome back\./, 'Emulator smoke must independently confirm that the hosted Android web page rendered its real sign-in screen.');
+assert.match(smoke, /Connect Supabase Auth/, 'Emulator smoke must recognize the explicit missing-auth-configuration screen as rendered application content.');
+assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit sanitized UI diagnostics when hosted content does not render.');
+assert.ok(smoke.includes('native-startup.log'), 'Emulator smoke must preserve filtered native JavaScript-bundle startup diagnostics.');
+assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes("index\\.android\\.bundle"), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
+assert.ok(smoke.includes('[REDACTED]'), 'Native startup diagnostics must redact bearer values and URL query strings.');
+assert.ok(smoke.includes("index\\.android\\.bundle"), 'Native startup diagnostics must use a literal-dot regex for the Android bundle path.');
+assert.ok(smoke.includes("\\?[^[:space:]]+#"), 'Native startup diagnostics must redact literal URL query strings.');
+assert.ok(smoke.includes("\\1?[REDACTED]") && smoke.includes("\\1[REDACTED]"), 'Native startup diagnostics must use valid sed capture-group replacements.');
+assert.match(smoke, /ReactNativeJS:V/, 'Emulator smoke must independently observe the native WebView readiness bridge.');
+assert.match(smoke, /adb logcat -c/, 'Emulator smoke must clear stale readiness messages before launching the app.');
+assert.match(smoke, /screencap -p/, 'Emulator smoke must preserve a failure screenshot for diagnosis.');
+assert.match(smoke, /CodeForgeWebView/, 'Emulator smoke must collect only the sanitized CodeForge WebView diagnostic tag.');
+assert.ok(workflow.includes('if: always()'), 'Native CI must upload diagnostics even when Android WebView smoke fails.');
+
+assert.ok(workflow.includes('unzip -l "$RELEASE_APK" | grep -q "assets/index.android.bundle"'), 'The release APK used for emulator smoke must contain the embedded React Native JS bundle.');
+assert.ok(workflow.includes('BUNDLE_SHA_BEFORE') && workflow.includes('BUNDLE_SHA_AFTER'), 'The signed CI smoke APK must preserve the exact embedded React Native bundle.');
+assert.ok(workflow.includes('aapt" dump badging "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The signed CI smoke APK must retain the CodeForge package identity.');
+assert.match(workflow, /name: Sign release APK with ephemeral CI smoke key/, 'The emulator smoke APK must be signed with a disposable CI-only key, not production credentials.');
+assert.ok(workflow.includes('apksigner" sign') && workflow.includes('--out "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The CI-only signed smoke APK must be generated outside the release artifact directory.');
+assert.ok(workflow.includes('script: bash scripts/android-install-smoke.sh "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The Android emulator must install the bundled release variant.');
+assert.ok(!workflow.includes('script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk'), 'The debug variant must not be used for a hosted-WebView smoke without Metro.');
+assert.ok(workflow.includes('name: Remove ephemeral Android smoke signing material') && workflow.includes('rm -f "$RUNNER_TEMP/CodeForge-smoke.apk" "$RUNNER_TEMP/codeforge-android-smoke.jks"'), 'The CI-only smoke APK and temporary signing material must be removed after the emulator test.');
+
+console.log('Android WebView startup, recovery, rendered-content readiness, and failure-diagnostics contract passed.');
