@@ -36,6 +36,9 @@ assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit
 assert.ok(smoke.includes('native-startup.log'), 'Emulator smoke must preserve filtered native JavaScript-bundle startup diagnostics.');
 assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes('index.android.bundle'), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
 assert.ok(smoke.includes('[REDACTED]'), 'Native startup diagnostics must redact bearer values and URL query strings.');
+assert.ok(smoke.includes("index\\.android\\.bundle"), 'Native startup diagnostics must use a literal-dot regex for the Android bundle path.');
+assert.ok(smoke.includes("\\?[^[:space:]]+#"), 'Native startup diagnostics must redact literal URL query strings.');
+assert.ok(smoke.includes("\\1?[REDACTED]") && smoke.includes("\\1[REDACTED]"), 'Native startup diagnostics must use valid sed capture-group replacements.');
 assert.match(smoke, /ReactNativeJS:V/, 'Emulator smoke must independently observe the native WebView readiness bridge.');
 assert.match(smoke, /adb logcat -c/, 'Emulator smoke must clear stale readiness messages before launching the app.');
 assert.match(smoke, /screencap -p/, 'Emulator smoke must preserve a failure screenshot for diagnosis.');
