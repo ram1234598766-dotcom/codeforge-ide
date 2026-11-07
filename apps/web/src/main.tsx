@@ -273,11 +273,6 @@ function MonitorIcon() { return <span className="simple-device-icon" aria-hidden
 function SmartphoneIcon() { return <span className="simple-device-icon" aria-hidden="true">▯</span>; }
 
 function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
-  useEffect(() => {
-    const rootElement = document.getElementById('root');
-    rootElement?.setAttribute('data-codeforge-app-ready', 'true');
-    return () => rootElement?.removeAttribute('data-codeforge-app-ready');
-  }, []);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState(authRedirectState.isPasswordRecovery);
@@ -338,6 +333,16 @@ function App({ authRedirectState }: { authRedirectState: AuthRedirectState }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    const rootElement = document.getElementById('root');
+    if (authReady) {
+      rootElement?.setAttribute('data-codeforge-app-ready', 'true');
+    } else {
+      rootElement?.removeAttribute('data-codeforge-app-ready');
+    }
+    return () => rootElement?.removeAttribute('data-codeforge-app-ready');
+  }, [authReady]);
 
   useEffect(() => {
     try {
