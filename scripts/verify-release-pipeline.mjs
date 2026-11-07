@@ -285,12 +285,13 @@ try {
 }
 
 assert.match(publisher, /gh release download/);
-assert.match(releaseSource, /PUBLISHED_RELEASE_TAG:\\s*string \\| null = null/);
-assert.match(releaseSource, /getReleaseDownloadUrl\\(asset: string\\)/);
-assert.match(releaseSource, /if \\(!tag \\|\\|/);
+assert.ok(releaseSource.includes('PUBLISHED_RELEASE_TAG: string | null = null'));
+assert.ok(releaseSource.includes('getReleaseDownloadUrl(asset: string)'));
+assert.ok(releaseSource.includes('if (!tag ||'));
+assert.ok(!releaseSource.includes('tag: string ='));
+assert.ok(home.includes("getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')"));
+assert.ok(home.includes("getReleaseDownloadUrl('CodeForge.apk')"));
 assert.doesNotMatch(releaseSource, /tag: string =/);
-assert.match(home, /getReleaseDownloadUrl\\('CodeForge-Setup-Windows\\.exe'\\)/);
-assert.match(home, /getReleaseDownloadUrl\\('CodeForge\\.apk'\\)/);
 assert.doesNotMatch(home, /releases\\/latest\\/download|Self-signed installer/);
 
 
@@ -356,9 +357,6 @@ assert.ok(releasePolicy.includes("verify-android-webview.mjs"), "Release-policy 
 assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy CI must run hosted-route regression tests.");
 assert.ok(!read("../apps/web/src/styles.css").includes("fonts.googleapis.com"), "The Android-critical stylesheet must not block on Google Fonts.");
 assert.match(home, /VERIFIED SIGNED RELEASE PENDING/);
-assert.match(home, /const PUBLISHED_RELEASE_TAG: string \| null = null/);
-assert.match(home, /const windowsDownloadUrl: string \| null = null/);
-assert.match(home, /const androidDownloadUrl: string \| null = null/);
 
 
 
