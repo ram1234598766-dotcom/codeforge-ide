@@ -95,6 +95,7 @@ jobs:
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-RELEASE-METADATA.txt
           grep -q "^package: name='com.codeforge.ide'" release/ANDROID-DEBUG-METADATA.txt
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$RELEASE_APK"
+          unzip -l "$RELEASE_APK" | grep -q "assets/index.android.bundle"
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$DEBUG_APK"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --print-certs "$DEBUG_APK" | tee release/ANDROID-DEBUG-SIGNATURE.txt
       - name: Verify Android permission allowlist
@@ -106,6 +107,22 @@ jobs:
           cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk release/CodeForge-unsigned.apk
           cp apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk release/CodeForge-debug.apk
           (cd release && sha256sum CodeForge-unsigned.apk CodeForge-debug.apk > SHA256-Android-CI.txt)
+      - name: Sign release APK with ephemeral CI smoke key
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          RELEASE_APK="release/CodeForge-unsigned.apk"
+          SMOKE_KEYSTORE="$RUNNER_TEMP/codeforge-android-smoke.jks"
+          SMOKE_PASSWORD="$(openssl rand -hex 24)"
+          trap 'rm -f "$SMOKE_KEYSTORE"; unset SMOKE_PASSWORD' EXIT
+          test -s "$RELEASE_APK"
+          keytool -genkeypair -noprompt -keystore "$SMOKE_KEYSTORE" -storetype JKS -storepass "$SMOKE_PASSWORD" -keypass "$SMOKE_PASSWORD" -alias codeforge-ci-smoke -keyalg RSA -keysize 2048 -validity 2 -dname "CN=CodeForge CI Smoke"
+          "$SDK_BUILD_TOOLS/apksigner" sign --ks "$SMOKE_KEYSTORE" --ks-type JKS --ks-key-alias codeforge-ci-smoke --ks-pass pass:"$SMOKE_PASSWORD" --key-pass pass:"$SMOKE_PASSWORD" --out "$RUNNER_TEMP/CodeForge-smoke.apk" "$RELEASE_APK"
+          "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr "$RUNNER_TEMP/CodeForge-smoke.apk"
+          "$SDK_BUILD_TOOLS/zipalign" -c 4 "$RUNNER_TEMP/CodeForge-smoke.apk"
+          test -s "$RUNNER_TEMP/CodeForge-smoke.apk"
+          echo "Disposable CI-only signing verified; this APK is not a release artifact."
       - name: Validate Android smoke script syntax
         run: bash -n scripts/android-install-smoke.sh
       - name: Enable KVM for hardware-accelerated Android emulator
@@ -148,7 +165,11 @@ jobs:
           profile: pixel_2
           disable-linux-hw-accel: false
           disable-animations: true
-          script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk
+          script: bash scripts/android-install-smoke.sh "$RUNNER_TEMP/CodeForge-smoke.apk"
+      - name: Remove ephemeral Android smoke signing material
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/CodeForge-smoke.apk" "$RUNNER_TEMP/codeforge-android-smoke.jks"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
