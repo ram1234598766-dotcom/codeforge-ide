@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../apps/mobile/App.tsx', import.meta.url), 'utf8');
+const webApp = readFileSync(new URL('../apps/web/src/main.tsx', import.meta.url), 'utf8');
 const smoke = readFileSync(new URL('./android-install-smoke.sh', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../.github/workflows/native-shells-ci.yml', import.meta.url), 'utf8');
 
@@ -9,6 +10,8 @@ assert.match(app, /onHttpError=/, 'WebView must surface HTTP failures.');
 assert.match(app, /onRenderProcessGone=/, 'WebView must recover from renderer termination.');
 assert.match(app, /onContentProcessDidTerminate=/, 'WebView must recover from content-process termination.');
 assert.match(app, /injectedJavaScript=/, 'WebView must verify that the hosted SPA rendered.');
+assert.match(webApp, /if \(authReady\) rootElement\?\.setAttribute\('data-codeforge-app-ready'/, 'The web app must set its readiness marker only after auth initialization completes.');
+assert.match(webApp, /\}, \[authReady\]\);/, 'The web readiness marker must track auth initialization state.');
 assert.ok(app.includes('legacyAuthScreenRendered'), 'Readiness must recognize the real auth screen on older deployed SPA builds.');
 assert.ok(app.includes('legacyWorkspaceRendered'), 'Readiness must recognize the real workspace shell on older deployed SPA builds.');
 assert.ok(!app.includes('appRoot && appRoot.children.length > 0'), 'A non-empty loading placeholder must not count as a rendered CodeForge app.');
