@@ -291,7 +291,6 @@ assert.ok(releaseSource.includes('if (!tag ||'));
 assert.ok(!releaseSource.includes('tag: string ='));
 assert.ok(home.includes("getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')"));
 assert.ok(home.includes("getReleaseDownloadUrl('CodeForge.apk')"));
-assert.doesNotMatch(releaseSource, /tag: string =/);
 assert.doesNotMatch(home, /releases\\/latest\\/download|Self-signed installer/);
 
 
