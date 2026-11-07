@@ -291,7 +291,6 @@ assert.ok(releaseSource.includes('if (!tag ||'));
 assert.ok(!releaseSource.includes('tag: string ='));
 assert.ok(home.includes("getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')"));
 assert.ok(home.includes("getReleaseDownloadUrl('CodeForge.apk')"));
-assert.doesNotMatch(home, /releases\\/latest\\/download|Self-signed installer/);
 
 
 const androidSigningStep = installers.slice(
@@ -356,6 +355,7 @@ assert.ok(releasePolicy.includes("verify-android-webview.mjs"), "Release-policy 
 assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy CI must run hosted-route regression tests.");
 assert.ok(!read("../apps/web/src/styles.css").includes("fonts.googleapis.com"), "The Android-critical stylesheet must not block on Google Fonts.");
 assert.match(home, /VERIFIED SIGNED RELEASE PENDING/);
+assert.ok(!home.includes('releases/latest/download') && !home.includes('Self-signed installer'));
 
 
 
