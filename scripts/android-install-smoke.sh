@@ -39,7 +39,7 @@ WEBVIEW_READY=false
 WEBVIEW_READY_REASON=""
 for attempt in $(seq 1 60); do
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
-  UI_TREE="$(adb shell cat /sdcard/codeforge-window.xml 2>/dev/null | tr -d '\\r' || true)"
+  UI_TREE="$(adb shell cat /sdcard/codeforge-window.xml 2>/dev/null | tr -d '\r' || true)"
 
   # Prefer the native readiness signal, but independently confirm rendered website content.
   # UIAutomator may expose WebView DOM text without exposing the WebView accessibilityLabel.
