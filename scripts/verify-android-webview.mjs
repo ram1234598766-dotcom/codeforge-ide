@@ -33,13 +33,18 @@ assert.match(smoke, /CodeForge app ready/, 'Emulator smoke must wait for the hos
 assert.match(smoke, /Welcome back\./, 'Emulator smoke must independently confirm that the hosted Android web page rendered its real sign-in screen.');
 assert.match(smoke, /Connect Supabase Auth/, 'Emulator smoke must recognize the explicit missing-auth-configuration screen as rendered application content.');
 assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit sanitized UI diagnostics when hosted content does not render.');
+assert.ok(smoke.includes('native-startup.log'), 'Emulator smoke must preserve filtered native JavaScript-bundle startup diagnostics.');
+assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes('index.android.bundle'), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
+assert.ok(smoke.includes('[REDACTED]'), 'Native startup diagnostics must redact bearer values and URL query strings.');
 assert.match(smoke, /ReactNativeJS:V/, 'Emulator smoke must independently observe the native WebView readiness bridge.');
 assert.match(smoke, /adb logcat -c/, 'Emulator smoke must clear stale readiness messages before launching the app.');
 assert.match(smoke, /screencap -p/, 'Emulator smoke must preserve a failure screenshot for diagnosis.');
 assert.match(smoke, /CodeForgeWebView/, 'Emulator smoke must collect only the sanitized CodeForge WebView diagnostic tag.');
 assert.ok(workflow.includes('if: always()'), 'Native CI must upload diagnostics even when Android WebView smoke fails.');
 
-assert.match(workflow, /unzip -l "\\$RELEASE_APK" \\| grep -q "assets\\/index\\.android\\.bundle"/, 'The release APK used for emulator smoke must contain the embedded React Native JS bundle.');
+assert.ok(workflow.includes('unzip -l "$RELEASE_APK" | grep -q "assets/index.android.bundle"'), 'The release APK used for emulator smoke must contain the embedded React Native JS bundle.');
+assert.ok(workflow.includes('BUNDLE_SHA_BEFORE') && workflow.includes('BUNDLE_SHA_AFTER'), 'The signed CI smoke APK must preserve the exact embedded React Native bundle.');
+assert.ok(workflow.includes('aapt" dump badging "$RUNNER_TEMP/CodeForge-smoke.apk"'), 'The signed CI smoke APK must retain the CodeForge package identity.');
 assert.match(workflow, /name: Sign release APK with ephemeral CI smoke key/, 'The emulator smoke APK must be signed with a disposable CI-only key, not production credentials.');
 assert.match(workflow, /apksigner" sign[\\s\\S]*?--out "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The CI-only signed smoke APK must be generated outside the release artifact directory.');
 assert.match(workflow, /script: bash scripts\\/android-install-smoke\\.sh "\\$RUNNER_TEMP\\/CodeForge-smoke\\.apk"/, 'The Android emulator must install the bundled release variant.');

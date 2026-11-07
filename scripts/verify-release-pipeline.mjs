@@ -123,6 +123,7 @@ assert.ok(native.includes("codeforge-desktop.exe"));
 assert.match(native, /Gradle native build attempt/);
 assert.match(native, /Validate Android smoke script syntax/);
 assert.ok(native.includes("bash -n scripts/android-install-smoke.sh"));
+assert.ok(native.includes('BUNDLE_SHA_BEFORE') && native.includes('BUNDLE_SHA_AFTER'), "Android CI must verify the JS bundle survives disposable APK signing.");
 
 const diskCleanupStep = native.indexOf("name: Reclaim build-only disk space before emulator provisioning");
 const emulatorSmokeStep = native.indexOf("name: Install and launch Android app in disposable emulator");
@@ -133,7 +134,7 @@ assert.ok(native.includes('rm -rf "$HOME/.gradle/caches"'), "Gradle caches must 
 assert.ok(native.includes('rm -rf "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms" "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"'), "Build-only Android SDK packages must be removed before the emulator action reinstalls its required packages.");
 assert.ok(native.includes('AVAILABLE_KB') && native.includes('5242880'), "Android emulator provisioning must fail with a clear diagnostic when less than 5 GiB is available.");
 assert.ok(native.includes('df -h /'), "Android emulator CI must report filesystem usage before and after cleanup.");
-assert.ok(native.includes("script: bash scripts/android-install-smoke.sh release/CodeForge-debug.apk"));
+assert.ok(native.includes('script: bash scripts/android-install-smoke.sh "$RUNNER_TEMP/CodeForge-smoke.apk"'), "Android WebView smoke must install the bundled release APK signed with a disposable CI-only key.");
 assert.match(native, /Verify Android permission allowlist/);
 assert.ok(native.includes("node scripts/verify-android-permissions.mjs release/ANDROID-RELEASE-METADATA.txt release/ANDROID-DEBUG-METADATA.txt"));
 assert.ok(native.includes("node --test scripts/verify-android-permissions.test.mjs"));

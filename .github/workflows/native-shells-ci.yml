@@ -121,6 +121,14 @@ jobs:
           "$SDK_BUILD_TOOLS/apksigner" sign --ks "$SMOKE_KEYSTORE" --ks-type JKS --ks-key-alias codeforge-ci-smoke --ks-pass pass:"$SMOKE_PASSWORD" --key-pass pass:"$SMOKE_PASSWORD" --out "$RUNNER_TEMP/CodeForge-smoke.apk" "$RELEASE_APK"
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr "$RUNNER_TEMP/CodeForge-smoke.apk"
           "$SDK_BUILD_TOOLS/zipalign" -c 4 "$RUNNER_TEMP/CodeForge-smoke.apk"
+          "$SDK_BUILD_TOOLS/aapt" dump badging "$RUNNER_TEMP/CodeForge-smoke.apk" | grep -q "^package: name='com.codeforge.ide'"
+          BUNDLE_SHA_BEFORE="$(unzip -p "$RELEASE_APK" assets/index.android.bundle | sha256sum | awk '{print $1}')"
+          BUNDLE_SHA_AFTER="$(unzip -p "$RUNNER_TEMP/CodeForge-smoke.apk" assets/index.android.bundle | sha256sum | awk '{print $1}')"
+          if [[ -z "$BUNDLE_SHA_BEFORE" || "$BUNDLE_SHA_BEFORE" != "$BUNDLE_SHA_AFTER" ]]; then
+            echo "::error::The disposable signing step did not preserve the embedded React Native release bundle."
+            exit 1
+          fi
+          echo "Embedded React Native bundle SHA-256 verified after signing: $BUNDLE_SHA_AFTER"
           test -s "$RUNNER_TEMP/CodeForge-smoke.apk"
           echo "Disposable CI-only signing verified; this APK is not a release artifact."
       - name: Validate Android smoke script syntax

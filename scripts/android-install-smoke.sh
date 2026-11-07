@@ -23,6 +23,9 @@ capture_diagnostics() {
   adb pull /sdcard/codeforge-screen.png "$DIAGNOSTICS_DIR/screen.png" >/dev/null 2>&1 || true
   adb logcat -d -s ReactNativeJS:V ReactNative:V AndroidRuntime:E chromium:E WebViewFactory:I > "$LOG_FILE" || true
   grep -F '[CodeForgeWebView]' "$LOG_FILE" > "$DIAGNOSTICS_DIR/webview.log" || true
+  grep -Ei 'Unable to load script|index\\.android\\.bundle|loadJSBundleFromAssets|loadScriptFromAssets|FileNotFoundException|AssetManager|JSBundleLoader|Hermes|FATAL EXCEPTION|Caused by:' "$LOG_FILE" \
+    | sed -E 's#(https?://[^?[:space:]]+)\\?[^[:space:]]+#\\1?[REDACTED]#g; s#(Bearer )[[:alnum:]_./+-]+#\\1[REDACTED]#g' \
+    > "$DIAGNOSTICS_DIR/native-startup.log" || true
   if [[ -s "$DIAGNOSTICS_DIR/window.xml" ]]; then
     grep -Eo '(text|content-desc)="[^"]{1,160}"' "$DIAGNOSTICS_DIR/window.xml" > "$DIAGNOSTICS_DIR/accessibility.txt" || true
   fi
@@ -106,6 +109,8 @@ if [[ "$WEBVIEW_READY" != "true" ]]; then
   echo "No verified native WebView readiness or hosted CodeForge content was found."
   echo "Sanitized WebView lifecycle diagnostics:"
   cat "$DIAGNOSTICS_DIR/webview.log" 2>/dev/null || true
+  echo "Filtered native bundle-load diagnostics:"
+  cat "$DIAGNOSTICS_DIR/native-startup.log" 2>/dev/null || true
   echo "Relevant visible accessibility text:"
   cat "$DIAGNOSTICS_DIR/accessibility.txt" 2>/dev/null || true
   echo "Resumed Android activity:"
