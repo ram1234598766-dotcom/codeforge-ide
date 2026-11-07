@@ -395,7 +395,7 @@ jobs:
             exit 1
           fi
           "$SDK_BUILD_TOOLS/zipalign" -c 4 release/CodeForge.apk
-          ACTUAL_SIGNER_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' release/ANDROID-SIGNING-VERIFICATION.txt | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]' | head -n 1)"
+          ACTUAL_SIGNER_CERT="$(node scripts/extract-apksigner-cert.mjs release/ANDROID-SIGNING-VERIFICATION.txt)"
           if [[ -z "$ACTUAL_SIGNER_CERT" || "$ACTUAL_SIGNER_CERT" != "$EXPECTED_CERT" ]]; then
             echo "::error::The signed APK certificate does not match the configured production fingerprint."
             exit 1
