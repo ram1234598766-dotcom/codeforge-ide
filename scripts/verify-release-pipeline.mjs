@@ -274,7 +274,10 @@ try {
 }
 
 assert.match(publisher, /gh release download/);
-assert.match(releaseSource, /PUBLISHED_RELEASE_TAG = 'v1\.0\.26'/);
+assert.match(releaseSource, /PUBLISHED_RELEASE_TAG:\s*string \| null = null/);
+assert.match(releaseSource, /getReleaseDownloadUrl\(asset: string\)/);
+assert.match(releaseSource, /if \(!tag \|\|/);
+assert.doesNotMatch(releaseSource, /tag: string =/);
 assert.match(unsignedPublisher, /SOURCE_RUN_ID: 42230415496/);
 assert.match(unsignedPublisher, /SOURCE_SHA: f2e8d0d13467e765f29c2a8f5dcdb973ad39e58b/);
 assert.match(unsignedPublisher, /RELEASE_TAG: v1\.0\.26/);
