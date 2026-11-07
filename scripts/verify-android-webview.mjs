@@ -34,7 +34,7 @@ assert.match(smoke, /Welcome back\./, 'Emulator smoke must independently confirm
 assert.match(smoke, /Connect Supabase Auth/, 'Emulator smoke must recognize the explicit missing-auth-configuration screen as rendered application content.');
 assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit sanitized UI diagnostics when hosted content does not render.');
 assert.ok(smoke.includes('native-startup.log'), 'Emulator smoke must preserve filtered native JavaScript-bundle startup diagnostics.');
-assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes('index.android.bundle'), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
+assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes("index\\.android\\.bundle"), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
 assert.ok(smoke.includes('[REDACTED]'), 'Native startup diagnostics must redact bearer values and URL query strings.');
 assert.ok(smoke.includes("index\\.android\\.bundle"), 'Native startup diagnostics must use a literal-dot regex for the Android bundle path.');
 assert.ok(smoke.includes("\\?[^[:space:]]+#"), 'Native startup diagnostics must redact literal URL query strings.');
