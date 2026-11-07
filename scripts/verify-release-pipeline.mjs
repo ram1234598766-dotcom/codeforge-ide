@@ -373,6 +373,9 @@ assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy 
 assert.ok(!read("../apps/web/src/styles.css").includes("fonts.googleapis.com"), "The Android-critical stylesheet must not block on Google Fonts.");
 assert.match(home, /VERIFIED SIGNED RELEASE PENDING/);
 assert.ok(!home.includes('releases/latest/download') && !home.includes('Self-signed installer'));
+assert.ok(home.includes('PUBLISHED_RELEASE_TAG ? <a'), 'The website must link only to a verified release tag.');
+assert.ok(home.includes('/releases/tag/${PUBLISHED_RELEASE_TAG}'), 'The website release link must target the verified tag only.');
+assert.ok(!home.includes('View release history'), 'The website must not link users to historical unsigned release assets.');
 
 
 
