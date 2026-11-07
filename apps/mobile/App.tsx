@@ -15,6 +15,19 @@ const CODEFORGE_URL = 'https://codeforge-ide.vasudevaya.workers.dev/app';
 const CODEFORGE_ORIGIN = 'https://codeforge-ide.vasudevaya.workers.dev';
 const LOAD_TIMEOUT_MS = 30000;
 
+function safePath(value: string): string {
+  try {
+    const url = new URL(value);
+    return url.origin === CODEFORGE_ORIGIN ? url.pathname : '/external';
+  } catch {
+    return '/unknown';
+  }
+}
+
+function logWebViewEvent(message: string): void {
+  if (__DEV__) console.info('[CodeForgeWebView] ' + message);
+}
+
 const WEBVIEW_READY_SCRIPT = `
 (function () {
   var origin = 'https://codeforge-ide.vasudevaya.workers.dev';
@@ -22,38 +35,61 @@ const WEBVIEW_READY_SCRIPT = `
     && (window.location.pathname === '/app' || window.location.pathname.indexOf('/app/') === 0);
   if (!isCodeForgeAppRoute) return true;
 
+  if (window.__CODEFORGE_READY_WATCH_STARTED) return true;
+  window.__CODEFORGE_READY_WATCH_STARTED = true;
+
   var startedAt = Date.now();
-  var timeoutReported = false;
+  var reported = {};
+  var resourceErrors = 0;
+  var promiseRejections = 0;
 
-  function postNativeMessage(type) {
-    if (type === 'codeforge-ready') {
-      if (window.__CODEFORGE_APP_READY_REPORTED) return true;
-      if (!window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') return false;
-      window.__CODEFORGE_APP_READY_REPORTED = true;
-    } else {
-      if (timeoutReported || !window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') return false;
-      timeoutReported = true;
-    }
-
+  function postNativeMessage(type, details) {
+    if (reported[type]) return true;
+    if (!window.ReactNativeWebView || typeof window.ReactNativeWebView.postMessage !== 'function') return false;
+    reported[type] = true;
     window.ReactNativeWebView.postMessage(JSON.stringify({
       type: type,
-      path: window.location.pathname
+      path: window.location.pathname,
+      details: details || null
     }));
     return true;
   }
 
+  window.addEventListener('error', function (event) {
+    if (event && event.target && event.target !== window) resourceErrors += 1;
+  }, true);
+  window.addEventListener('unhandledrejection', function () {
+    promiseRejections += 1;
+  });
+
   function checkReady() {
     var readyMarker = document.querySelector('[data-codeforge-app-ready="true"]');
     var appRoot = document.querySelector('#root');
-    var appRendered = Boolean(readyMarker || (appRoot && appRoot.children.length > 0));
+    var appHeading = document.querySelector('.auth-card h1');
+    var headingText = appHeading ? (appHeading.textContent || '').trim() : '';
+    var legacyAuthScreenRendered = /^(Welcome back\\.|Create your account\\.|Reset your password\\.|Choose a new password\\.|Connect Supabase Auth)$/.test(headingText);
+    var previewBanner = document.querySelector('.browser-preview-banner');
+    var legacyWorkspaceRendered = Boolean(previewBanner && (previewBanner.textContent || '').trim().length > 0);
+    var appRendered = Boolean(readyMarker || legacyAuthScreenRendered || legacyWorkspaceRendered);
 
     if (document.readyState === 'complete' && appRendered) {
-      return postNativeMessage('codeforge-ready');
+      return postNativeMessage('codeforge-ready', {
+        readinessMarker: Boolean(readyMarker),
+        authScreen: legacyAuthScreenRendered,
+        workspaceShell: legacyWorkspaceRendered
+      });
     }
 
     if (Date.now() - startedAt >= 20000) {
-      postNativeMessage('codeforge-timeout');
-      return timeoutReported;
+      postNativeMessage('codeforge-timeout', {
+        readyState: document.readyState,
+        rootChildren: appRoot ? appRoot.children.length : 0,
+        authScreen: legacyAuthScreenRendered,
+        workspaceShell: legacyWorkspaceRendered,
+        resourceErrors: resourceErrors,
+        promiseRejections: promiseRejections
+      });
+      return Boolean(reported['codeforge-timeout']);
     }
 
     return false;
@@ -155,13 +191,39 @@ export default function App() {
 
   const handleMessage = (event: { nativeEvent: { data: string } }) => {
     try {
-      const message = JSON.parse(event.nativeEvent.data) as { type?: string; path?: string };
-      if (message.type === 'codeforge-ready' && typeof message.path === 'string'
-        && (message.path === '/app' || message.path.startsWith('/app/'))) {
+      const message = JSON.parse(event.nativeEvent.data) as {
+        type?: string;
+        path?: string;
+        details?: {
+          readyState?: string;
+          rootChildren?: number;
+          authScreen?: boolean;
+          workspaceShell?: boolean;
+          readinessMarker?: boolean;
+          resourceErrors?: number;
+          promiseRejections?: number;
+        } | null;
+      };
+      const appPath = typeof message.path === 'string'
+        && (message.path === '/app' || message.path.startsWith('/app/'))
+        ? message.path
+        : '/unknown';
+      if (message.type === 'codeforge-ready' && appPath !== '/unknown') {
+        logWebViewEvent('readiness=ready path=' + appPath);
         setReady(true);
         setLoading(false);
         setFailed(false);
-      } else if (message.type === 'codeforge-timeout') {
+      } else if (message.type === 'codeforge-timeout' && appPath !== '/unknown') {
+        const details = message.details || {};
+        logWebViewEvent(
+          'readiness=timeout path=' + appPath
+          + ' readyState=' + (details.readyState || 'unknown')
+          + ' rootChildren=' + (Number.isInteger(details.rootChildren) ? details.rootChildren : -1)
+          + ' authScreen=' + Boolean(details.authScreen)
+          + ' workspaceShell=' + Boolean(details.workspaceShell)
+          + ' resourceErrors=' + (Number.isInteger(details.resourceErrors) ? details.resourceErrors : -1)
+          + ' promiseRejections=' + (Number.isInteger(details.promiseRejections) ? details.promiseRejections : -1)
+        );
         failMainDocument();
       }
     } catch {
@@ -187,6 +249,7 @@ export default function App() {
         ref={webView}
         source={{ uri: CODEFORGE_URL }}
         style={styles.webview}
+        accessible={true}
         accessibilityLabel={ready ? 'CodeForge app ready' : 'Loading CodeForge app'}
         originWhitelist={['https://*']}
         javaScriptEnabled
@@ -201,21 +264,34 @@ export default function App() {
         injectedJavaScript={WEBVIEW_READY_SCRIPT}
         onMessage={handleMessage}
         onNavigationStateChange={handleNavigationStateChange}
-        onLoadStart={() => {
+        onLoadStart={event => {
+          logWebViewEvent('event=load-start path=' + safePath(event.nativeEvent.url));
           setLoading(true);
           setReady(false);
           setFailed(false);
         }}
-        onLoadEnd={() => {
+        onLoadEnd={event => {
+          logWebViewEvent('event=load-end path=' + safePath(event.nativeEvent.url));
           // Retry after the main document load so the native bridge and SPA root are both available.
           webView.current?.injectJavaScript(WEBVIEW_READY_SCRIPT);
         }}
-        onError={failMainDocument}
+        onError={event => {
+          logWebViewEvent('event=load-error path=' + safePath(event.nativeEvent.url) + ' code=' + event.nativeEvent.code);
+          failMainDocument();
+        }}
         onHttpError={event => {
+          const path = safePath(event.nativeEvent.url);
+          logWebViewEvent('event=http-error path=' + path + ' status=' + event.nativeEvent.statusCode);
           if (isCodeForgeAppUrl(event.nativeEvent.url)) failMainDocument();
         }}
-        onRenderProcessGone={failMainDocument}
-        onContentProcessDidTerminate={failMainDocument}
+        onRenderProcessGone={() => {
+          logWebViewEvent('event=renderer-gone path=/app');
+          failMainDocument();
+        }}
+        onContentProcessDidTerminate={() => {
+          logWebViewEvent('event=content-process-terminated path=/app');
+          failMainDocument();
+        }}
       />
       {loading && !failed && (
         <View pointerEvents="none" style={styles.loading}>
