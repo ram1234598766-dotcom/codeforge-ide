@@ -24,8 +24,12 @@ assert.ok(app.includes("authScreen=' + authScreen + ' workspaceShell=' + workspa
 assert.match(app, /var appRendered = Boolean\(legacyAuthScreenRendered \|\| legacyWorkspaceRendered\);/, 'The injected readiness watcher must require actual auth or workspace DOM content.');
 assert.doesNotMatch(app, /Boolean\(readyMarker \|\| legacyAuthScreenRendered \|\| legacyWorkspaceRendered\)/, 'A generic root marker alone must not count as rendered application content.');
 assert.doesNotMatch(app, /Connect Supabase Auth/, 'A missing Supabase configuration screen must not count as a successful sign-in UI.');
-assert.ok(smoke.includes('BRIDGE_READY=false') && smoke.includes('READY_LABEL_VISIBLE=false'), 'Emulator smoke must track native bridge and accessibility readiness independently.');
-assert.ok(smoke.includes("grep -Eq 'authScreen=true|workspaceShell=true'"), 'Emulator smoke must require a real rendered auth screen or workspace shell.');
+assert.ok(smoke.includes('ACCESSIBILITY_READY_LABEL') && smoke.includes('VISIBLE_APP_TEXT'), 'Emulator smoke must record the native readiness label and rendered app-content evidence independently.');
+assert.match(smoke, /if \[\[ "\$READY_LABEL_VISIBLE" == "true" && "\$VISIBLE_APP_TEXT" == "true" && \( "\$AUTH_SCREEN_RENDERED" == "true" \|\| "\$WORKSPACE_SHELL_RENDERED" == "true" \) \]\]/, 'Release APK smoke must require the native readiness label plus real auth/workspace UI.');
+assert.ok(smoke.includes('NATIVE_BRIDGE_READY=true'), 'A verified accessibility readiness label and rendered app content must be recorded as native bridge readiness.');
+assert.ok(!smoke.includes('readiness=ready path=/app'), 'Release APK smoke must not depend on __DEV__-only ReactNativeJS readiness logs.');
+assert.ok(!smoke.includes('readiness=timeout path=/app'), 'Release APK smoke must use its bounded accessibility polling window rather than a development-only timeout log.');
+assert.match(app, /if \(__DEV__\) console\.info/, 'WebView diagnostics must remain development-only rather than enabling production console logging.');
 assert.ok(smoke.includes('readiness.txt'), 'Emulator smoke must retain sanitized success readiness evidence.');
 assert.ok(smoke.indexOf('write_readiness_evidence()') >= 0 && smoke.indexOf('write_readiness_evidence()') < smoke.indexOf('capture_diagnostics()'), 'Readiness evidence must be available before early network-failure diagnostics.');
 assert.ok(!smoke.includes('"Connect Supabase Auth"'), 'A missing auth configuration screen must remain a smoke-test failure.');
