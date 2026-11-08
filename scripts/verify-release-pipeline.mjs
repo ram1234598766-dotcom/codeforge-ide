@@ -105,6 +105,9 @@ assert.ok(installers.includes('node scripts/verify-android-apk-metadata.mjs rele
 assert.ok(installers.includes('aapt" dump xmltree'), 'The merged Android manifest must be inspected before and after signing.');
 assert.ok(publisher.includes('aapt" dump xmltree CodeForge.apk AndroidManifest.xml'), 'The paired publisher must independently inspect the final APK manifest.');
 assert.ok(publisher.includes('APK_METADATA_SHA256') && publisher.includes('APK_MANIFEST_SHA256'), 'The publisher must bind parsed manifest hashes to the same APK build metadata.');
+assert.ok(installers.includes('(cd release && sha256sum APK-METADATA.txt > APK-METADATA-SHA256.txt)'), 'The APK manifest checksum must use a portable artifact-relative path.');
+assert.ok(installers.includes('(cd release && sha256sum APK-MERGED-MANIFEST-XMLTREE.txt > APK-MERGED-MANIFEST-SHA256.txt)'), 'The merged manifest checksum must use a portable artifact-relative path.');
+assert.ok(publisher.includes('sha256sum -c APK-METADATA-SHA256.txt') && publisher.includes('sha256sum -c APK-MERGED-MANIFEST-SHA256.txt'), 'The paired publisher must verify both original manifest checksums.');
 assert.ok(androidMetadataVerifier.includes('expectedAndroidApkContract'));
 assert.ok(androidMetadataVerifier.includes('applicationLabel') && androidMetadataVerifier.includes('minSdkVersion') && androidMetadataVerifier.includes('targetSdkVersion'));
 assert.ok(androidMetadataVerifier.includes('supported ABIs mismatch'));
