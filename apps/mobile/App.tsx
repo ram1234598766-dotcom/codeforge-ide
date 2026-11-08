@@ -67,10 +67,10 @@ const WEBVIEW_READY_SCRIPT = `
     var appRoot = document.querySelector('#root');
     var appHeading = document.querySelector('.auth-card h1');
     var headingText = appHeading ? (appHeading.textContent || '').trim() : '';
-    var legacyAuthScreenRendered = /^(Welcome back\\.|Create your account\\.|Reset your password\\.|Choose a new password\\.|Connect Supabase Auth)$/.test(headingText);
+    var legacyAuthScreenRendered = /^(Welcome back\\.|Create your account\\.|Reset your password\\.|Choose a new password\\.)$/.test(headingText);
     var previewBanner = document.querySelector('.browser-preview-banner');
     var legacyWorkspaceRendered = Boolean(previewBanner && (previewBanner.textContent || '').trim().length > 0);
-    var appRendered = Boolean(readyMarker || legacyAuthScreenRendered || legacyWorkspaceRendered);
+    var appRendered = Boolean(legacyAuthScreenRendered || legacyWorkspaceRendered);
 
     if (document.readyState === 'complete' && appRendered) {
       return postNativeMessage('codeforge-ready', {
@@ -208,11 +208,16 @@ export default function App() {
         && (message.path === '/app' || message.path.startsWith('/app/'))
         ? message.path
         : '/unknown';
-      if (message.type === 'codeforge-ready' && appPath !== '/unknown') {
-        logWebViewEvent('readiness=ready path=' + appPath);
+      const authScreen = message.details?.authScreen === true;
+      const workspaceShell = message.details?.workspaceShell === true;
+      if (message.type === 'codeforge-ready' && appPath !== '/unknown' && (authScreen || workspaceShell)) {
+        logWebViewEvent('readiness=ready path=' + appPath + ' authScreen=' + authScreen + ' workspaceShell=' + workspaceShell);
         setReady(true);
         setLoading(false);
         setFailed(false);
+      } else if (message.type === 'codeforge-ready' && appPath !== '/unknown') {
+        logWebViewEvent('readiness=not-rendered path=' + appPath + ' authScreen=' + authScreen + ' workspaceShell=' + workspaceShell);
+        failMainDocument();
       } else if (message.type === 'codeforge-timeout' && appPath !== '/unknown') {
         const details = message.details || {};
         logWebViewEvent(
