@@ -288,8 +288,8 @@ jobs:
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" > release/APK-METADATA.txt
           node scripts/verify-android-apk-metadata.mjs release/APK-METADATA.txt "$BUILD_NUMBER" "1.0.$BUILD_NUMBER"
           "$SDK_BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml > release/APK-MERGED-MANIFEST-XMLTREE.txt
-          sha256sum release/APK-METADATA.txt > release/APK-METADATA-SHA256.txt
-          sha256sum release/APK-MERGED-MANIFEST-XMLTREE.txt > release/APK-MERGED-MANIFEST-SHA256.txt
+          (cd release && sha256sum APK-METADATA.txt > APK-METADATA-SHA256.txt)
+          (cd release && sha256sum APK-MERGED-MANIFEST-XMLTREE.txt > APK-MERGED-MANIFEST-SHA256.txt)
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/CodeForge-aligned.apk"
       - name: Verify Android permission allowlist
         run: node scripts/verify-android-permissions.mjs release/APK-METADATA.txt
