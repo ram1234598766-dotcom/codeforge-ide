@@ -17,6 +17,17 @@ assert.ok(app.includes('legacyWorkspaceRendered'), 'Readiness must recognize the
 assert.ok(!app.includes('appRoot && appRoot.children.length > 0'), 'A non-empty loading placeholder must not count as a rendered CodeForge app.');
 assert.ok(app.includes('accessible={true}'), 'The native WebView readiness label must be exposed to Android accessibility.');
 assert.ok(app.includes('readiness=ready path='), 'The native bridge must emit a sanitized readiness event for the emulator smoke.');
+assert.ok(app.includes("const authScreen = message.details?.authScreen === true;"), 'Native readiness must retain the rendered sign-in screen signal.');
+assert.ok(app.includes("const workspaceShell = message.details?.workspaceShell === true;"), 'Native readiness must retain the rendered workspace shell signal.');
+assert.ok(app.includes("authScreen || workspaceShell"), 'The native app must reject a generic readiness marker without actual sign-in or workspace UI.');
+assert.ok(app.includes("authScreen=' + authScreen + ' workspaceShell=' + workspaceShell"), 'Native readiness diagnostics must record only sanitized rendered-state booleans.');
+assert.match(app, /const appRendered = Boolean\(legacyAuthScreenRendered \|\| legacyWorkspaceRendered\);/, 'The injected readiness watcher must require actual auth or workspace DOM content.');
+assert.doesNotMatch(app, /Boolean\(readyMarker \|\| legacyAuthScreenRendered \|\| legacyWorkspaceRendered\)/, 'A generic root marker alone must not count as rendered application content.');
+assert.doesNotMatch(app, /Connect Supabase Auth/, 'A missing Supabase configuration screen must not count as a successful sign-in UI.');
+assert.ok(smoke.includes('BRIDGE_READY=false') && smoke.includes('READY_LABEL_VISIBLE=false'), 'Emulator smoke must track native bridge and accessibility readiness independently.');
+assert.ok(smoke.includes("grep -Eq 'authScreen=true|workspaceShell=true'"), 'Emulator smoke must require a real rendered auth screen or workspace shell.');
+assert.ok(smoke.includes('readiness.txt'), 'Emulator smoke must retain sanitized success readiness evidence.');
+assert.ok(!smoke.includes('"Connect Supabase Auth"'), 'A missing auth configuration screen must remain a smoke-test failure.');
 assert.ok(app.includes('readiness=timeout'), 'The native bridge must emit a sanitized timeout diagnostic.');
 assert.match(app, /new MutationObserver\(/, 'WebView readiness must observe delayed SPA rendering.');
 assert.ok(app.includes('window.__CODEFORGE_READY_WATCH_STARTED'), 'Repeated readiness injections must not create duplicate observers.');
