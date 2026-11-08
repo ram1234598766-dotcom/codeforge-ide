@@ -37,12 +37,42 @@ capture_diagnostics() {
   } > "$DIAGNOSTICS_DIR/device.txt"
 }
 
+enable_emulator_network() {
+  adb shell settings put global airplane_mode_on 0 >/dev/null 2>&1 || true
+  adb shell svc wifi enable >/dev/null 2>&1 || true
+  adb shell svc data enable >/dev/null 2>&1 || true
+  adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
+
+  for attempt in $(seq 1 30); do
+    if adb shell dumpsys connectivity 2>/dev/null | grep -Eq 'INTERNET.*VALIDATED|VALIDATED.*INTERNET'; then
+      printf 'VALIDATED_NETWORK=true\n' > "$DIAGNOSTICS_DIR/network.txt"
+      return 0
+    fi
+    sleep 2
+  done
+
+  {
+    printf 'AIRPLANE_MODE='
+    adb shell settings get global airplane_mode_on | tr -d '\r'
+    printf 'WIFI_ENABLED='
+    adb shell settings get global wifi_on | tr -d '\r'
+    printf 'VALIDATED_NETWORK=false\n'
+  } > "$DIAGNOSTICS_DIR/network.txt"
+  echo "::error::Android emulator has no validated internet network. Hosted WebView verification is NOT VERIFIED; this is an emulator/network prerequisite."
+  return 1
+}
+
 if [[ ! -s "$APK_PATH" ]]; then
   printf 'APK not found or empty: %s\n' "$APK_PATH" >&2
   exit 1
 fi
 
 adb wait-for-device
+if ! enable_emulator_network; then
+  capture_diagnostics
+  cat "$DIAGNOSTICS_DIR/network.txt" >&2
+  exit 2
+fi
 adb logcat -c
 adb install -r "$APK_PATH"
 adb shell monkey -p "$PACKAGE_NAME" 1
