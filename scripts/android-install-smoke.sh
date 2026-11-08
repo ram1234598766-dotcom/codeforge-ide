@@ -114,41 +114,36 @@ for attempt in $(seq 1 60); do
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
   UI_TREE="$(adb shell cat /sdcard/codeforge-window.xml 2>/dev/null | tr -d '\r' || true)"
 
-  BRIDGE_READY="$(adb logcat -d -s ReactNativeJS:V | grep -F '[CodeForgeWebView] readiness=ready path=/app' | tail -n 1 || true)"
-  if [[ -n "$BRIDGE_READY" ]] && grep -Eq 'authScreen=true|workspaceShell=true' <<< "$BRIDGE_READY"; then
-    NATIVE_BRIDGE_READY=true
-    if grep -Fq 'authScreen=true' <<< "$BRIDGE_READY"; then AUTH_SCREEN_RENDERED=true; fi
-    if grep -Fq 'workspaceShell=true' <<< "$BRIDGE_READY"; then WORKSPACE_SHELL_RENDERED=true; fi
-  fi
-
   if [[ "$UI_TREE" == *"CodeForge app ready"* ]]; then
     READY_LABEL_VISIBLE=true
   fi
 
-  # Collect only a boolean: never persist page text, account data, or auth state.
+  # The accessibility label changes to "CodeForge app ready" only after the
+  # native bridge accepts the SPA's rendered auth/workspace readiness message.
+  # Release builds compile out __DEV__ console events, so readiness must not
+  # depend on a ReactNativeJS logcat line.
   for marker in \
     "Welcome back." \
-    "Sign in securely to access your projects and saved files." \
     "Create your account." \
     "Reset your password." \
-    "Choose a new password." \
-    "CODEFORGE WEB PREVIEW" \
-    "AI COMMAND CENTER"; do
+    "Choose a new password."; do
     if [[ "$UI_TREE" == *"$marker"* ]]; then
+      AUTH_SCREEN_RENDERED=true
       VISIBLE_APP_TEXT=true
       break
     fi
   done
 
-  if [[ "$NATIVE_BRIDGE_READY" == "true" && "$READY_LABEL_VISIBLE" == "true" ]]; then
-    WEBVIEW_READY=true
-    WEBVIEW_READY_REASON="native bridge confirmed rendered auth/workspace DOM and accessibility readiness label"
-    write_readiness_evidence
-    break
+  if [[ "$UI_TREE" == *"CODEFORGE WEB PREVIEW"* || "$UI_TREE" == *"AI COMMAND CENTER"* ]]; then
+    WORKSPACE_SHELL_RENDERED=true
+    VISIBLE_APP_TEXT=true
   fi
 
-  TIMEOUT_DIAGNOSTIC="$(adb logcat -d -s ReactNativeJS:V | grep -F '[CodeForgeWebView] readiness=timeout path=/app' | tail -n 1 || true)"
-  if [[ -n "$TIMEOUT_DIAGNOSTIC" ]]; then
+  if [[ "$READY_LABEL_VISIBLE" == "true" && "$VISIBLE_APP_TEXT" == "true" && ( "$AUTH_SCREEN_RENDERED" == "true" || "$WORKSPACE_SHELL_RENDERED" == "true" ) ]]; then
+    NATIVE_BRIDGE_READY=true
+    WEBVIEW_READY=true
+    WEBVIEW_READY_REASON="native readiness accessibility label and rendered auth/workspace content confirmed"
+    write_readiness_evidence
     break
   fi
   sleep 1
