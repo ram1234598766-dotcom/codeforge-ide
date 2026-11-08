@@ -46,9 +46,12 @@ jobs:
       - name: Install Expo dependencies and create lockfile
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=true
+      - name: Verify patched glob and minimatch versions
+        working-directory: apps/mobile
+        run: node ../../scripts/verify-mobile-dependency-tree.mjs
       - name: Audit Android client dependencies
         working-directory: apps/mobile
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=moderate
       - name: Expo diagnostics
         working-directory: apps/mobile
         run: npx expo-doctor
