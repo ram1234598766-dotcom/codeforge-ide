@@ -173,6 +173,7 @@ jobs:
           profile: pixel_2
           disable-linux-hw-accel: false
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -netdelay none -netspeed full
           script: bash scripts/android-install-smoke.sh "$RUNNER_TEMP/CodeForge-smoke.apk"
       - name: Remove ephemeral Android smoke signing material
         if: always()
