@@ -82,6 +82,7 @@ jobs:
         if: steps.windows-signing.outputs.configured == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
+          name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input
           path: release/CodeForge-Setup-Windows.exe
           archive: false
           if-no-files-found: error
@@ -122,6 +123,9 @@ jobs:
           if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate) {
             throw "SignPath Authenticode verification failed: $($signature.Status)"
           }
+          if (-not $signature.TimeStamperCertificate) {
+            throw "The Windows Authenticode signature is missing a trusted timestamp."
+          }
           $expectedThumbprint = ($env:WINDOWS_SIGNING_CERT_THUMBPRINT -replace "[^0-9A-Fa-f]", "").ToUpperInvariant()
           $actualThumbprint = $signature.SignerCertificate.Thumbprint.ToUpperInvariant()
           if ($actualThumbprint -ne $expectedThumbprint) {
@@ -143,6 +147,9 @@ jobs:
             "SIGNPATH_SIGNING_REQUEST_ID=$env:SIGNPATH_SIGNING_REQUEST_ID",
             "SUBJECT=$($signature.SignerCertificate.Subject)",
             "ISSUER=$($signature.SignerCertificate.Issuer)",
+            "TIMESTAMP_CERT_SUBJECT=$($signature.TimeStamperCertificate.Subject)",
+            "TIMESTAMP_CERT_ISSUER=$($signature.TimeStamperCertificate.Issuer)",
+            "TIMESTAMP_CERT_THUMBPRINT=$($signature.TimeStamperCertificate.Thumbprint.ToUpperInvariant())",
             "THUMBPRINT=$actualThumbprint",
             "CERT_FILE_SHA256=$certificateFileHash",
             "NOT_BEFORE=$($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o'))",
@@ -158,6 +165,9 @@ jobs:
           $signature = Get-AuthenticodeSignature release/CodeForge-Setup-Windows.exe
           if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate) {
             throw "Windows Authenticode verification failed: $($signature.Status)"
+          }
+          if (-not $signature.TimeStamperCertificate) {
+            throw "Windows Authenticode timestamp verification failed: no timestamp certificate was present."
           }
           $signing = Get-Content release/WINDOWS-SIGNING-METADATA.txt | Where-Object { $_ -like "SIGNING=*" } | Select-Object -First 1
           if ($signing -ne "SIGNING=durable") {
@@ -266,7 +276,7 @@ jobs:
             fi
             sleep "$((attempt * 10))"
           done
-      - name: Align APK and record package metadata
+      - name: Parse production APK manifest and align pre-sign APK
         shell: bash
         run: |
           set -euo pipefail
@@ -274,8 +284,12 @@ jobs:
           APK="$(find apps/mobile/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK"
           mkdir -p release
+          BUILD_NUMBER="$GITHUB_RUN_NUMBER"
           "$SDK_BUILD_TOOLS/aapt" dump badging "$APK" > release/APK-METADATA.txt
-          grep -q "^package: name='com.codeforge.ide'" release/APK-METADATA.txt
+          node scripts/verify-android-apk-metadata.mjs release/APK-METADATA.txt "$BUILD_NUMBER" "1.0.$BUILD_NUMBER"
+          "$SDK_BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml > release/APK-MERGED-MANIFEST-XMLTREE.txt
+          sha256sum release/APK-METADATA.txt > release/APK-METADATA-SHA256.txt
+          sha256sum release/APK-MERGED-MANIFEST-XMLTREE.txt > release/APK-MERGED-MANIFEST-SHA256.txt
           "$SDK_BUILD_TOOLS/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/CodeForge-aligned.apk"
       - name: Verify Android permission allowlist
         run: node scripts/verify-android-permissions.mjs release/APK-METADATA.txt
@@ -395,6 +409,12 @@ jobs:
             exit 1
           fi
           "$SDK_BUILD_TOOLS/zipalign" -c 4 release/CodeForge.apk
+          "$SDK_BUILD_TOOLS/aapt" dump badging release/CodeForge.apk > release/APK-METADATA-FINAL.txt
+          node scripts/verify-android-apk-metadata.mjs release/APK-METADATA-FINAL.txt "$GITHUB_RUN_NUMBER" "1.0.$GITHUB_RUN_NUMBER"
+          node scripts/verify-android-permissions.mjs release/APK-METADATA-FINAL.txt
+          cmp release/APK-METADATA.txt release/APK-METADATA-FINAL.txt
+          "$SDK_BUILD_TOOLS/aapt" dump xmltree release/CodeForge.apk AndroidManifest.xml > release/APK-MERGED-MANIFEST-XMLTREE-FINAL.txt
+          cmp release/APK-MERGED-MANIFEST-XMLTREE.txt release/APK-MERGED-MANIFEST-XMLTREE-FINAL.txt
           ACTUAL_SIGNER_CERT="$(node scripts/extract-apksigner-cert.mjs release/ANDROID-SIGNING-VERIFICATION.txt)"
           if [[ -z "$ACTUAL_SIGNER_CERT" || "$ACTUAL_SIGNER_CERT" != "$EXPECTED_CERT" ]]; then
             echo "::error::The signed APK certificate does not match the configured production fingerprint."
@@ -402,6 +422,36 @@ jobs:
           fi
           printf 'SIGNING=durable\nCERT_SHA256=%s\nKEY_ALIAS=%s\nKEYSTORE_TYPE=%s\n' "$ACTUAL_SIGNER_CERT" "$ANDROID_KEY_ALIAS" "$KEYSTORE_TYPE" > release/ANDROID-SIGNING-METADATA.txt
           rm -f "$KEYSTORE"
+      - name: Stage non-production Android diagnostic when durable signing fails
+        id: android-signing-diagnostic
+        if: always() && steps.android-signing-run.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIAGNOSTIC_DIR="$RUNNER_TEMP/codeforge-android-non-production-diagnostic"
+          if [[ ! -s "$RUNNER_TEMP/CodeForge-aligned.apk" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p "$DIAGNOSTIC_DIR"
+          cp "$RUNNER_TEMP/CodeForge-aligned.apk" "$DIAGNOSTIC_DIR/NOT-PRODUCTION-ELIGIBLE-CodeForge.apk"
+          {
+            printf 'SOURCE_SHA=%s\n' "$GITHUB_SHA"
+            printf 'WORKFLOW_RUN_ID=%s\n' "$GITHUB_RUN_ID"
+            printf 'SIGNING_STATUS=not-production-verified\n'
+            printf 'INSTALLABLE_FOR_PRODUCTION=false\n'
+            printf 'REASON=durable_android_signing_or_identity_validation_failed\n'
+          } > "$DIAGNOSTIC_DIR/DIAGNOSTIC-METADATA.txt"
+          sha256sum "$DIAGNOSTIC_DIR/NOT-PRODUCTION-ELIGIBLE-CodeForge.apk" > "$DIAGNOSTIC_DIR/SHA256-DIAGNOSTIC.txt"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Upload non-production Android diagnostic artifact
+        if: always() && steps.android-signing-diagnostic.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/codeforge-android-non-production-diagnostic/*
+          if-no-files-found: error
+          retention-days: 1
       - name: Record Android build metadata and checksum
         shell: bash
         env:
@@ -411,6 +461,9 @@ jobs:
           (cd release && sha256sum CodeForge.apk > SHA256-Android.txt)
           SIGNING="$(sed -n 's/^SIGNING=//p' release/ANDROID-SIGNING-METADATA.txt | head -n 1)"
           CERT_SHA256="$(sed -n 's/^CERT_SHA256=//p' release/ANDROID-SIGNING-METADATA.txt | head -n 1)"
+          APK_SHA256="$(sha256sum release/CodeForge.apk | awk '{print $1}')"
+          APK_METADATA_SHA256="$(sha256sum release/APK-METADATA-FINAL.txt | awk '{print $1}')"
+          APK_MANIFEST_SHA256="$(sha256sum release/APK-MERGED-MANIFEST-XMLTREE-FINAL.txt | awk '{print $1}')"
           if [[ "$SIGNING" != "durable" || ! "$CERT_SHA256" =~ ^[A-F0-9]{64}$ ]]; then
             echo "::error::A durably signed APK with a verified certificate fingerprint is required; unsigned production APKs are not staged."
             exit 1
@@ -424,6 +477,9 @@ jobs:
             printf 'RUN_NUMBER=%s\n' "$BUILD_NUMBER"
             printf 'SIGNING=%s\n' "$SIGNING"
             printf 'CERT_SHA256=%s\n' "$CERT_SHA256"
+            printf 'APK_SHA256=%s\n' "$APK_SHA256"
+            printf 'APK_METADATA_SHA256=%s\n' "$APK_METADATA_SHA256"
+            printf 'APK_MANIFEST_SHA256=%s\n' "$APK_MANIFEST_SHA256"
           } > release/BUILD-METADATA.txt
           rm -f "$RUNNER_TEMP/CodeForge-aligned.apk"
       - name: Enable KVM for production APK emulator verification
