@@ -67,6 +67,9 @@ jobs:
           $signature = Get-AuthenticodeSignature release/windows/CodeForge-Setup-Windows.exe
           if ($signature.Status -ne "Valid" -or -not $signature.SignerCertificate) { throw "Windows Authenticode signature is not valid: $($signature.Status)" }
           if ($signature.SignerCertificate.Thumbprint.ToUpperInvariant() -ne $expectedThumbprint) { throw "The Windows installer was signed by an unexpected certificate." }
+          if (-not $signature.TimeStamperCertificate) { throw "The Windows Authenticode signature has no trusted timestamp certificate." }
+          $recordedTimestampThumbprint = (($metadata | Where-Object { $_ -like "TIMESTAMP_CERT_THUMBPRINT=*" } | Select-Object -First 1) -replace "^TIMESTAMP_CERT_THUMBPRINT=", "").ToUpperInvariant()
+          if ($recordedTimestampThumbprint -ne $signature.TimeStamperCertificate.Thumbprint.ToUpperInvariant()) { throw "The Windows timestamp certificate does not match signing metadata." }
           $signtool = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/bin/*/x64/signtool.exe" -ErrorAction SilentlyContinue |
             Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
             Select-Object -First 1
@@ -121,7 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           cd release/android
-          for file in CodeForge.apk SHA256-Android.txt ANDROID-SIGNING-METADATA.txt ANDROID-SIGNING-VERIFICATION.txt BUILD-METADATA.txt APK-METADATA.txt; do
+          for file in CodeForge.apk SHA256-Android.txt ANDROID-SIGNING-METADATA.txt ANDROID-SIGNING-VERIFICATION.txt BUILD-METADATA.txt APK-METADATA.txt APK-METADATA-FINAL.txt APK-METADATA-SHA256.txt APK-MERGED-MANIFEST-XMLTREE.txt APK-MERGED-MANIFEST-XMLTREE-FINAL.txt APK-MERGED-MANIFEST-SHA256.txt; do
             test -s "$file" || { echo "::error::Missing Android production release file: $file"; exit 1; }
           done
           sha256sum -c SHA256-Android.txt
@@ -140,8 +143,23 @@ jobs:
 
           # Parse the actual signed APK again; do not rely solely on build-time metadata.
           "$SDK_BUILD_TOOLS/aapt" dump badging CodeForge.apk > APK-METADATA-REVALIDATED.txt
-          grep -q "^package: name='com.codeforge.ide' versionCode='$RUN_NUMBER' versionName='1.0.$RUN_NUMBER'" APK-METADATA-REVALIDATED.txt
+          node ../../scripts/verify-android-apk-metadata.mjs APK-METADATA-REVALIDATED.txt "$RUN_NUMBER" "1.0.$RUN_NUMBER"
           node ../../scripts/verify-android-permissions.mjs APK-METADATA-REVALIDATED.txt
+          cmp APK-METADATA.txt APK-METADATA-REVALIDATED.txt
+          cmp APK-METADATA-FINAL.txt APK-METADATA-REVALIDATED.txt
+          "$SDK_BUILD_TOOLS/aapt" dump xmltree CodeForge.apk AndroidManifest.xml > APK-MERGED-MANIFEST-XMLTREE-REVALIDATED.txt
+          cmp APK-MERGED-MANIFEST-XMLTREE-FINAL.txt APK-MERGED-MANIFEST-XMLTREE-REVALIDATED.txt
+          sha256sum -c APK-METADATA-SHA256.txt
+          sha256sum -c APK-MERGED-MANIFEST-SHA256.txt
+          ACTUAL_APK_SHA256="$(sha256sum CodeForge.apk | awk '{print $1}')"
+          EXPECTED_APK_SHA256="$(sed -n 's/^APK_SHA256=//p' BUILD-METADATA.txt | head -n 1)"
+          ACTUAL_METADATA_SHA256="$(sha256sum APK-METADATA-REVALIDATED.txt | awk '{print $1}')"
+          EXPECTED_METADATA_SHA256="$(sed -n 's/^APK_METADATA_SHA256=//p' BUILD-METADATA.txt | head -n 1)"
+          ACTUAL_MANIFEST_SHA256="$(sha256sum APK-MERGED-MANIFEST-XMLTREE-REVALIDATED.txt | awk '{print $1}')"
+          EXPECTED_MANIFEST_SHA256="$(sed -n 's/^APK_MANIFEST_SHA256=//p' BUILD-METADATA.txt | head -n 1)"
+          test "$ACTUAL_APK_SHA256" = "$EXPECTED_APK_SHA256"
+          test "$ACTUAL_METADATA_SHA256" = "$EXPECTED_METADATA_SHA256"
+          test "$ACTUAL_MANIFEST_SHA256" = "$EXPECTED_MANIFEST_SHA256"
           "$SDK_BUILD_TOOLS/zipalign" -c 4 CodeForge.apk
           "$SDK_BUILD_TOOLS/apksigner" verify --verbose --Werr --print-certs CodeForge.apk | tee ANDROID-SIGNING-VERIFICATION-RELEASE.txt
 
@@ -196,7 +214,7 @@ jobs:
           for file in CodeForge-Setup-Windows.exe CodeForge-Windows-Certificate.cer WINDOWS-SIGNING-METADATA.txt BUILD-METADATA.txt SHA256-Windows.txt; do
             test -s "release/windows/$file"
           done
-          for file in CodeForge.apk ANDROID-SIGNING-METADATA.txt ANDROID-SIGNING-VERIFICATION.txt APK-METADATA.txt BUILD-METADATA.txt SHA256-Android.txt; do
+          for file in CodeForge.apk ANDROID-SIGNING-METADATA.txt ANDROID-SIGNING-VERIFICATION.txt APK-METADATA.txt APK-METADATA-FINAL.txt APK-METADATA-SHA256.txt APK-MERGED-MANIFEST-XMLTREE.txt APK-MERGED-MANIFEST-XMLTREE-FINAL.txt APK-MERGED-MANIFEST-SHA256.txt BUILD-METADATA.txt SHA256-Android.txt; do
             test -s "release/android/$file"
           done
           (cd release/windows && sha256sum -c SHA256-Windows.txt)
