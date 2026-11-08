@@ -6,6 +6,23 @@ PACKAGE_NAME="${2:-com.codeforge.ide}"
 DIAGNOSTICS_DIR="${CODEFORGE_DIAGNOSTICS_DIR:-release/mobile-smoke-diagnostics}"
 LOG_FILE="$(mktemp)"
 UI_TREE=""
+WEBVIEW_READY=false
+WEBVIEW_READY_REASON=""
+NATIVE_BRIDGE_READY=false
+AUTH_SCREEN_RENDERED=false
+WORKSPACE_SHELL_RENDERED=false
+READY_LABEL_VISIBLE=false
+VISIBLE_APP_TEXT=false
+
+write_readiness_evidence() {
+  {
+    printf 'NATIVE_BRIDGE_READY=%s\n' "$NATIVE_BRIDGE_READY"
+    printf 'AUTH_SCREEN_RENDERED=%s\n' "$AUTH_SCREEN_RENDERED"
+    printf 'WORKSPACE_SHELL_RENDERED=%s\n' "$WORKSPACE_SHELL_RENDERED"
+    printf 'ACCESSIBILITY_READY_LABEL=%s\n' "$READY_LABEL_VISIBLE"
+    printf 'VISIBLE_APP_TEXT=%s\n' "$VISIBLE_APP_TEXT"
+  } > "$DIAGNOSTICS_DIR/readiness.txt"
+}
 
 mkdir -p "$DIAGNOSTICS_DIR"
 
@@ -92,24 +109,6 @@ if [[ -z "$APP_PID" ]]; then
   printf 'Android app process did not start: %s\n' "$PACKAGE_NAME" >&2
   exit 1
 fi
-
-WEBVIEW_READY=false
-WEBVIEW_READY_REASON=""
-NATIVE_BRIDGE_READY=false
-AUTH_SCREEN_RENDERED=false
-WORKSPACE_SHELL_RENDERED=false
-READY_LABEL_VISIBLE=false
-VISIBLE_APP_TEXT=false
-
-write_readiness_evidence() {
-  {
-    printf 'NATIVE_BRIDGE_READY=%s\n' "$NATIVE_BRIDGE_READY"
-    printf 'AUTH_SCREEN_RENDERED=%s\n' "$AUTH_SCREEN_RENDERED"
-    printf 'WORKSPACE_SHELL_RENDERED=%s\n' "$WORKSPACE_SHELL_RENDERED"
-    printf 'ACCESSIBILITY_READY_LABEL=%s\n' "$READY_LABEL_VISIBLE"
-    printf 'VISIBLE_APP_TEXT=%s\n' "$VISIBLE_APP_TEXT"
-  } > "$DIAGNOSTICS_DIR/readiness.txt"
-}
 
 for attempt in $(seq 1 60); do
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
