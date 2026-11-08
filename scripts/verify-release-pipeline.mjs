@@ -354,6 +354,9 @@ assert.ok(mobileApp.includes("onMessage"), "Android must wait for the hosted Cod
 assert.ok(mobileApp.includes("data-codeforge-app-ready"), "The WebView must wait for the actual mounted CodeForge application.");
 assert.ok(home.includes("data-codeforge-app-ready"), "The hosted IDE must mark readiness only after React mounts.");
 assert.ok(androidSmoke.includes("uiautomator dump") && androidSmoke.includes("CodeForge app ready"), "Android emulator smoke must wait for hosted-app readiness.");
+assert.ok(androidSmoke.includes("svc wifi enable") && androidSmoke.includes("svc data enable"), "Android emulator smoke must enable Wi-Fi and data before hosted WebView verification.");
+assert.ok(androidSmoke.includes("VALIDATED"), "Android emulator smoke must distinguish missing emulator internet from an app startup failure.");
+assert.ok(native.includes("emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -netdelay none -netspeed full"), "Android emulator must boot with explicit network settings for hosted WebView verification.");
 
 const hostedSmoke = read("../scripts/verify-hosted-app.mjs");
 const hostedSmokeTests = read("../scripts/verify-hosted-app.test.mjs");
