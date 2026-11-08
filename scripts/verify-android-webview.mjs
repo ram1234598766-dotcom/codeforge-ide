@@ -42,7 +42,7 @@ assert.ok(smoke.includes("tr -d '\\r'"), 'UIAutomator output normalization must 
 assert.ok(!smoke.includes("tr -d '\\\\r'"), 'UIAutomator output normalization must not delete literal r characters from readiness labels.');
 assert.match(smoke, /CodeForge app ready/, 'Emulator smoke must wait for the hosted-app readiness signal.');
 assert.match(smoke, /Welcome back\./, 'Emulator smoke must independently confirm that the hosted Android web page rendered its real sign-in screen.');
-assert.match(smoke, /Connect Supabase Auth/, 'Emulator smoke must recognize the explicit missing-auth-configuration screen as rendered application content.');
+assert.doesNotMatch(smoke, /Connect Supabase Auth/, 'A missing auth configuration screen must not count as successful WebView readiness.');
 assert.match(smoke, /CODEFORGE_MOBILE_UI_DIAGNOSTICS/, 'Emulator smoke must emit sanitized UI diagnostics when hosted content does not render.');
 assert.ok(smoke.includes('native-startup.log'), 'Emulator smoke must preserve filtered native JavaScript-bundle startup diagnostics.');
 assert.ok(smoke.includes('loadJSBundleFromAssets') && smoke.includes("index\\.android\\.bundle"), 'Emulator smoke must capture the native React Native bundle-load failure signature.');
