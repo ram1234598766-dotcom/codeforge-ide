@@ -52,6 +52,8 @@ assert.ok(d1MigrationTest.includes('test_migrations_are_rerunnable_without_losin
 assert.ok(d1MigrationTest.includes('test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace'));
 
 const publisher = read('../.github/workflows/publish-versioned-release.yml');
+const androidMetadataVerifier = read('../scripts/verify-android-apk-metadata.mjs');
+const androidMetadataTests = read('../scripts/verify-android-apk-metadata.test.mjs');
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
@@ -90,6 +92,25 @@ assert.match(installers, /skip-decompress: true/);
 assert.match(installers, /SIGNPATH_SIGNING_REQUEST_ID\)\) \{/);
 assert.match(installers, /timeout-minutes: 120/);
 assert.match(installers, /Get-AuthenticodeSignature release\/CodeForge-Setup-Windows\.exe/);
+assert.ok(installers.includes('TimeStamperCertificate'), 'Windows production signing must require an Authenticode timestamp certificate.');
+assert.ok(publisher.includes('TimeStamperCertificate'), 'The paired publisher must independently verify the Authenticode timestamp certificate.');
+assert.ok(installers.includes('TIMESTAMP_CERT_THUMBPRINT='), 'Windows signing metadata must bind the timestamp certificate identity.');
+assert.ok(publisher.includes('TIMESTAMP_CERT_THUMBPRINT='), 'The Windows release verifier must compare the timestamp certificate identity.');
+assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input'), 'Unsigned SignPath input must be clearly labeled as a non-production diagnostic artifact.');
+assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-'), 'Android signing failures must retain only a clearly labeled diagnostic artifact.');
+assert.ok(installers.includes("steps.android-signing-run.outcome == 'failure'"), 'Android diagnostic upload must be restricted to durable signing failures.');
+assert.ok(installers.includes('INSTALLABLE_FOR_PRODUCTION=false'), 'Android diagnostic metadata must explicitly prohibit production installation.');
+assert.ok(installers.includes('node scripts/verify-android-apk-metadata.mjs release/APK-METADATA.txt'), 'The pre-sign APK must have its actual badging metadata validated.');
+assert.ok(installers.includes('node scripts/verify-android-apk-metadata.mjs release/APK-METADATA-FINAL.txt'), 'The final signed APK must be parsed and validated again.');
+assert.ok(installers.includes('aapt" dump xmltree'), 'The merged Android manifest must be inspected before and after signing.');
+assert.ok(publisher.includes('aapt" dump xmltree CodeForge.apk AndroidManifest.xml'), 'The paired publisher must independently inspect the final APK manifest.');
+assert.ok(publisher.includes('APK_METADATA_SHA256') && publisher.includes('APK_MANIFEST_SHA256'), 'The publisher must bind parsed manifest hashes to the same APK build metadata.');
+assert.ok(androidMetadataVerifier.includes('expectedAndroidApkContract'));
+assert.ok(androidMetadataVerifier.includes('applicationLabel') && androidMetadataVerifier.includes('minSdkVersion') && androidMetadataVerifier.includes('targetSdkVersion'));
+assert.ok(androidMetadataVerifier.includes('supported ABIs mismatch'));
+assert.ok(androidMetadataTests.includes('rejects a mismatched package ID'));
+assert.ok(androidMetadataTests.includes('rejects an unexpected application label or SDK contract'));
+assert.ok(androidMetadataTests.includes('rejects missing, duplicate, or unexpected ABI declarations'));
 
 
 assert.match(installers, /ANDROID_KEYSTORE_BASE64/);
@@ -143,7 +164,7 @@ assert.ok(
   installers.includes("node scripts/verify-android-permissions.mjs release/APK-METADATA.txt"),
   "The production APK must pass the same fail-closed permission allowlist as CI before signing.",
 );
-const productionApkMetadataStep = installers.indexOf("name: Align APK and record package metadata");
+const productionApkMetadataStep = installers.indexOf("name: Parse production APK manifest and align pre-sign APK");
 const productionPermissionGateStep = installers.indexOf("name: Verify Android permission allowlist");
 const productionSigningStep = installers.indexOf("name: Sign APK with durable production keystore");
 assert.ok(productionApkMetadataStep >= 0, "The production APK metadata must be extracted before permission validation.");
@@ -210,7 +231,7 @@ assert.match(publisher, /CodeForge-Setup-Windows\.exe/);
 assert.match(publisher, /CodeForge\.apk/);
 assert.match(publisher, /android-actions\/setup-android@v4/, 'The release publisher must independently re-parse the Android APK.');
 assert.match(publisher, /aapt" dump badging CodeForge\.apk/, 'The release publisher must parse the actual signed APK manifest/package.');
-assert.match(publisher, /versionCode=.*RUN_NUMBER/, 'The APK version code must match the production installer run.');
+assert.ok(publisher.includes('node ../../scripts/verify-android-apk-metadata.mjs APK-METADATA-REVALIDATED.txt "$RUN_NUMBER" "1.0.$RUN_NUMBER"'), 'The release publisher must validate actual APK versionCode and versionName against the upstream run.');
 assert.match(publisher, /zipalign" -c 4 CodeForge\.apk/, 'The final signed APK must pass ZIP alignment verification after signing.');
 assert.match(publisher, /verify-android-permissions\.mjs/, 'The release publisher must re-run the Android permission allowlist against parsed APK metadata.');
 assert.match(publisher, /apksigner" verify --verbose --Werr --print-certs CodeForge\.apk/, 'The release publisher must independently verify the APK signature and signer certificate.');
