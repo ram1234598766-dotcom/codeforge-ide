@@ -17,6 +17,7 @@ trap cleanup EXIT
 
 capture_diagnostics() {
   mkdir -p "$DIAGNOSTICS_DIR"
+  write_readiness_evidence
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/codeforge-window.xml "$DIAGNOSTICS_DIR/window.xml" >/dev/null 2>&1 || true
   adb shell screencap -p /sdcard/codeforge-screen.png >/dev/null 2>&1 || true
@@ -94,35 +95,56 @@ fi
 
 WEBVIEW_READY=false
 WEBVIEW_READY_REASON=""
+NATIVE_BRIDGE_READY=false
+AUTH_SCREEN_RENDERED=false
+WORKSPACE_SHELL_RENDERED=false
+READY_LABEL_VISIBLE=false
+VISIBLE_APP_TEXT=false
+
+write_readiness_evidence() {
+  {
+    printf 'NATIVE_BRIDGE_READY=%s\n' "$NATIVE_BRIDGE_READY"
+    printf 'AUTH_SCREEN_RENDERED=%s\n' "$AUTH_SCREEN_RENDERED"
+    printf 'WORKSPACE_SHELL_RENDERED=%s\n' "$WORKSPACE_SHELL_RENDERED"
+    printf 'ACCESSIBILITY_READY_LABEL=%s\n' "$READY_LABEL_VISIBLE"
+    printf 'VISIBLE_APP_TEXT=%s\n' "$VISIBLE_APP_TEXT"
+  } > "$DIAGNOSTICS_DIR/readiness.txt"
+}
+
 for attempt in $(seq 1 60); do
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
   UI_TREE="$(adb shell cat /sdcard/codeforge-window.xml 2>/dev/null | tr -d '\r' || true)"
 
   BRIDGE_READY="$(adb logcat -d -s ReactNativeJS:V | grep -F '[CodeForgeWebView] readiness=ready path=/app' | tail -n 1 || true)"
-  if [[ -n "$BRIDGE_READY" ]]; then
-    WEBVIEW_READY=true
-    WEBVIEW_READY_REASON="native bridge confirmed rendered /app DOM content"
-    break
+  if [[ -n "$BRIDGE_READY" ]] && grep -Eq 'authScreen=true|workspaceShell=true' <<< "$BRIDGE_READY"; then
+    NATIVE_BRIDGE_READY=true
+    if grep -Fq 'authScreen=true' <<< "$BRIDGE_READY"; then AUTH_SCREEN_RENDERED=true; fi
+    if grep -Fq 'workspaceShell=true' <<< "$BRIDGE_READY"; then WORKSPACE_SHELL_RENDERED=true; fi
   fi
 
-  # UIAutomator is a second independent signal. Some WebView builds expose DOM
-  # text, while others expose only the native accessibility label.
+  if [[ "$UI_TREE" == *"CodeForge app ready"* ]]; then
+    READY_LABEL_VISIBLE=true
+  fi
+
+  # Collect only a boolean: never persist page text, account data, or auth state.
   for marker in \
-    "CodeForge app ready" \
     "Welcome back." \
     "Sign in securely to access your projects and saved files." \
     "Create your account." \
-    "Connect Supabase Auth" \
+    "Reset your password." \
+    "Choose a new password." \
     "CODEFORGE WEB PREVIEW" \
     "AI COMMAND CENTER"; do
     if [[ "$UI_TREE" == *"$marker"* ]]; then
-      WEBVIEW_READY=true
-      WEBVIEW_READY_REASON="visible hosted CodeForge content: $marker"
+      VISIBLE_APP_TEXT=true
       break
     fi
   done
 
-  if [[ "$WEBVIEW_READY" == "true" ]]; then
+  if [[ "$NATIVE_BRIDGE_READY" == "true" && "$READY_LABEL_VISIBLE" == "true" ]]; then
+    WEBVIEW_READY=true
+    WEBVIEW_READY_REASON="native bridge confirmed rendered auth/workspace DOM and accessibility readiness label"
+    write_readiness_evidence
     break
   fi
 
@@ -132,6 +154,7 @@ for attempt in $(seq 1 60); do
   fi
   sleep 1
 done
+write_readiness_evidence
 
 if [[ "$WEBVIEW_READY" != "true" ]]; then
   capture_diagnostics
