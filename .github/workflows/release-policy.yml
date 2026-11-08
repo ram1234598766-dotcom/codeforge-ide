@@ -23,6 +23,8 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/verify-android-apk-metadata.mjs"
+      - "scripts/verify-android-apk-metadata.test.mjs"
       - "scripts/check-release-sequence.mjs"
       - "migrations/0005_code_change_requests.sql"
       - "migrations/0006_workspace_search_revisions.sql"
@@ -50,6 +52,8 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/verify-android-apk-metadata.mjs"
+      - "scripts/verify-android-apk-metadata.test.mjs"
       - "scripts/check-release-sequence.mjs"
       - "migrations/0005_code_change_requests.sql"
       - "migrations/0006_workspace_search_revisions.sql"
@@ -82,5 +86,7 @@ jobs:
         run: node scripts/verify-android-webview.mjs
       - name: Run hosted route regression tests
         run: node --test scripts/verify-hosted-app.test.mjs
+      - name: Test Android APK package, version, SDK, label, and ABI metadata
+        run: node --test scripts/verify-android-apk-metadata.test.mjs
       - name: Verify durable signing and download gates
         run: node scripts/verify-release-pipeline.mjs
