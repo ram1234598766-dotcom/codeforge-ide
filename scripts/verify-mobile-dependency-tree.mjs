@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+
+export const requiredVersions = Object.freeze({
+  glob: '14.0.2',
+  minimatch: '11.0.1',
+});
+
+export function collectDependencyVersions(tree) {
+  const found = { glob: [], minimatch: [] };
+  const visit = node => {
+    if (!node || typeof node !== 'object') return;
+    for (const [name, dependency] of Object.entries(node.dependencies || {})) {
+      if (Object.hasOwn(found, name) && typeof dependency?.version === 'string') {
+        found[name].push(dependency.version);
+      }
+      visit(dependency);
+    }
+  };
+  visit(tree);
+  return found;
+}
+
+export function verifyDependencyTree(tree) {
+  const found = collectDependencyVersions(tree);
+  for (const name of Object.keys(requiredVersions)) {
+    assert.ok(found[name].length > 0, 'No installed ' + name + ' dependency was found.');
+    assert.ok(
+      found[name].every(version => version === requiredVersions[name]),
+      name + ' must resolve only to ' + requiredVersions[name] + '; found: ' + found[name].join(', '),
+    );
+  }
+  return found;
+}
+
+const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+if (import.meta.url === invokedPath) {
+  const output = execFileSync('npm', ['ls', 'glob', 'minimatch', '--all', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const found = verifyDependencyTree(JSON.parse(output));
+  console.log('Verified patched mobile tooling dependencies: '
+    + 'glob=' + [...new Set(found.glob)].join(',')
+    + '; minimatch=' + [...new Set(found.minimatch)].join(','));
+}
