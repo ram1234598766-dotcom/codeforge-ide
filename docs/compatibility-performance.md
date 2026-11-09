@@ -55,7 +55,7 @@ This section supersedes any conflicting historical statements later in this docu
 
 ### Compatibility claims
 
-- No minimum Windows release, minimum Android API level, browser-version matrix, or device-performance tier is currently certified by this document.
+- The APK declares minSdk 24, but no minimum supported Android device/API matrix has been certified. No minimum Windows release, browser-version matrix, or device-performance tier is currently certified by this document.
 - CI runner success proves that the configured build and smoke-test workload completed; it does not prove compatibility with every end-user device.
 - Web, Windows, and Android clients use the same hosted account/workspace service. Offline workspace editing is not claimed.
 - The web package has unit/regression tests, type-checking, dependency audit, and a production build in CI. It currently has no dedicated lint script or browser end-to-end authentication/workspace suite.
