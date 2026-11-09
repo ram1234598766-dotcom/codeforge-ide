@@ -24,7 +24,7 @@ This section supersedes any conflicting historical statements later in this docu
 - The final APK was parsed with `aapt dump badging`; pre/post-signing badging and merged-manifest snapshots were byte-identical. `zipalign -c 4`, `apksigner verify --verbose --Werr --print-certs`, package/permission checks, signer fingerprint comparison, and SHA-256 checks passed.
 - Durable signer certificate SHA-256: `F96C203D70D2A90D853E35652D7C63758122F5C4B3EE674978F919C3F814F897`. APK SHA-256: `ae829fae972bd998a0b2044a3b7c2a7f82ff1dd0d8be6163a9e3b48961571fda`.
 - The production-signed APK installed and launched in the disposable emulator, rendered the hosted `/app` authentication screen with both native readiness and visible-content signals, remained stable during the smoke window, emitted no detected crash, and was uninstalled. The user was not signed in, so workspace rendering is not claimed.
-- The final parsed manifest contained `android.permission.INTERNET` and the package-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; the previously recorded unexplained storage/overlay/local-network permissions were not present in this APK.
+- The final parsed manifest contained `android.permission.INTERNET` and `com.codeforge.ide.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; the previously recorded unexplained storage/overlay/local-network permissions were not present in this APK.
 - Android Chrome/mobile-browser verification on a separate emulator was NOT VERIFIED: Limrun emulator provisioning was blocked by provider credits. This is not inferred from desktop HTTP checks.
 
 ### Live Worker and website
