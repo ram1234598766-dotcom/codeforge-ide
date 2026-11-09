@@ -2,7 +2,7 @@
 
 **Draft for review — CodeForge is not approved or enrolled with SignPath Foundation.**
 
-**Current status:** no SignPath Foundation approval, organization, project, signing policy, artifact configuration, API token, or Foundation certificate has been issued to CodeForge. No CodeForge Windows installer is represented as Foundation-signed. The repository now uses a custom Non-Commercial License rather than the earlier Apache-2.0 candidate. This license restricts commercial use and must not be described as an OSI-approved open-source license. The public v1.0.26 preview release is explicitly unsigned.
+**Current status (2026-11-09):** CodeForge has no SignPath Foundation approval or verified Foundation certificate. The root `LICENSE` is a custom Non-Commercial License, not an OSI-approved open-source license, so Foundation eligibility is blocked. On main SHA `ec86277761a45e9fdba09b5a19dbe446b38e12aa`, production-installer run [42477473293](https://github.com/ram1234598766-dotcom/codeforge-ide/actions/runs/42477473293) passed the non-empty GitHub settings preflight and reached the SignPath connector, which returned `Trusted build system is not allowed to log into the organization`. No signing request completed and no Windows Authenticode signature was produced or verified. The repository secret/variable names and non-empty values were present in that run, but this does not prove token submitter permission, project/policy/artifact-configuration validity, Foundation approval, or certificate trust. The only Windows output was a one-day diagnostic Actions artifact, not an installable or distributable installer. The same run produced a durable-signed Android APK, but the paired publisher skipped because Windows signing failed. The existing public v1.0.26 APK is unsigned and must not be described or linked as an installable production package.
 
 ## Proposed provider attribution
 
@@ -20,7 +20,7 @@ https://github.com/ram1234598766-dotcom/codeforge-ide
 
 The proposed signed artifact is the Windows NSIS installer `CodeForge-Setup-Windows.exe`, built from CodeForge source on a GitHub-hosted runner. The signing workflow is configured to run only for `main`, upload the exact unsigned EXE as a GitHub Actions artifact, submit that artifact to SignPath, wait for its approval/completion, retrieve the signed EXE, and verify Authenticode status and the expected certificate thumbprint.
 
-The workflow pins the SignPath signing action and artifact-upload action to immutable commit hashes. Missing SignPath configuration leaves the installer marked unsigned. The v1.0.26 preview publisher permits explicitly unsigned binaries only because the release is labelled unsigned and independently verifies artifact provenance and SHA-256 checksums. It does not claim publisher identity or code-signing authenticity.
+The workflow pins the SignPath signing action and artifact-upload action to immutable commit hashes. Missing SignPath configuration leaves the installer marked unsigned. The historical v1.0.26 release is unsigned. The standalone unsigned publisher is disabled on main; no unsigned binary is eligible for a new public release.
 
 ## Proposed signing roles — confirmation required
 
