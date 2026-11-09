@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyHostedApp } from './verify-hosted-app.mjs';
+import { readFileSync } from 'node:fs';
 
 function buildFetch(overrides = {}) {
   const html = `<!doctype html><html><head><link rel="stylesheet" href="/assets/app-abc.css"></head><body><div id="root"></div><script type="module" src="/assets/app-abc.js"></script></body></html>`;
@@ -69,4 +70,18 @@ test('rejects a missing SPA asset', async () => {
     })}),
     /\/assets\/app-abc.js returned HTTP 404/
   );
+});
+
+test('routes both Android SPA entry paths through Worker HTML cache policy', () => {
+  const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  const routesMatch = wrangler.match(/^\s*run_worker_first\s*=\s*\[([^\]]*)\]/m);
+  assert.ok(routesMatch, 'wrangler.toml must define assets.run_worker_first');
+
+  const workerFirstRoutes = [...routesMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  for (const route of ['/api/*', '/', '/index.html', '/app', '/app/*']) {
+    assert.ok(
+      workerFirstRoutes.includes(route),
+      'Cloudflare must run the Worker first for ' + route + ' so SPA HTML receives the no-store cache policy.',
+    );
+  }
 });
