@@ -49,7 +49,7 @@ jobs:
           $package | ConvertTo-Json -Depth 100 | Set-Content -Path $packagePath -Encoding utf8
           $cargoPath = "apps/desktop/src-tauri/Cargo.toml"
           $cargo = Get-Content -Path $cargoPath -Raw
-          $updatedCargo = [regex]::Replace($cargo, '(?m)^version\\s*=\\s*"[^"]+"', "version = `"$version`"", 1)
+          $updatedCargo = [regex]::Replace($cargo, '(?m)^version\s*=\s*"[^"]+"', "version = `"$version`"", 1)
           if ($updatedCargo -eq $cargo) { throw "The desktop Cargo package version could not be updated." }
           Set-Content -Path $cargoPath -Value $updatedCargo -Encoding utf8
           Write-Host "Set CodeForge Windows package versions to $version."
