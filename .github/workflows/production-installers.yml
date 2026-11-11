@@ -32,6 +32,27 @@ jobs:
         with:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
+      - name: Set monotonic Windows app version
+        shell: pwsh
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "1.0.$env:BUILD_NUMBER"
+          $configPath = "apps/desktop/src-tauri/tauri.conf.json"
+          $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+          $config.version = $version
+          $config | ConvertTo-Json -Depth 100 | Set-Content -Path $configPath -Encoding utf8
+          $packagePath = "apps/desktop/package.json"
+          $package = Get-Content -Path $packagePath -Raw | ConvertFrom-Json
+          $package.version = $version
+          $package | ConvertTo-Json -Depth 100 | Set-Content -Path $packagePath -Encoding utf8
+          $cargoPath = "apps/desktop/src-tauri/Cargo.toml"
+          $cargo = Get-Content -Path $cargoPath -Raw
+          $updatedCargo = [regex]::Replace($cargo, '(?m)^version\\s*=\\s*"[^"]+"', "version = `"$version`"", 1)
+          if ($updatedCargo -eq $cargo) { throw "The desktop Cargo package version could not be updated." }
+          Set-Content -Path $cargoPath -Value $updatedCargo -Encoding utf8
+          Write-Host "Set CodeForge Windows package versions to $version."
       - name: Install desktop dependencies
         working-directory: apps/desktop
         run: npm install --no-audit --no-fund
@@ -46,7 +67,11 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*.exe | Sort-Object FullName | Select-Object -First 1
-          if (-not $installer) { throw "Tauri did not produce a Windows NSIS installer." }
+          if (-not $installer -or $installer.Length -le 0) { throw "Tauri did not produce a non-empty Windows NSIS installer." }
+          $expectedVersion = "1.0.$env:GITHUB_RUN_NUMBER"
+          if ($installer.Name -notmatch [regex]::Escape($expectedVersion)) {
+            throw "The NSIS installer filename does not contain the expected monotonic version $expectedVersion."
+          }
           New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item $installer.FullName release/CodeForge-Setup-Windows.exe
       - name: Detect SignPath Foundation signing configuration
@@ -155,6 +180,41 @@ jobs:
             "NOT_BEFORE=$($signature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o'))",
             "NOT_AFTER=$($signature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o'))"
           ) | Set-Content -Path release/WINDOWS-SIGNING-METADATA.txt -Encoding utf8
+      - name: Install, launch, verify, and uninstall production-signed Windows installer
+        shell: pwsh
+        env:
+          EXPECTED_VERSION: 1.0.${{ github.run_number }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installerPath = "release/CodeForge-Setup-Windows.exe"
+          $installer = Get-Item -LiteralPath $installerPath
+          if ($installer.Length -le 0) { throw "The signed Windows production installer is empty." }
+          $versionInfo = $installer.VersionInfo
+          @{
+            ProductVersion = [string]$versionInfo.ProductVersion
+            FileVersion = [string]$versionInfo.FileVersion
+          } | ConvertTo-Json -Compress | Set-Content -Path release/WINDOWS-VERSION-METADATA.json -Encoding utf8
+          node scripts/verify-windows-installer-version.mjs release/WINDOWS-VERSION-METADATA.json "$env:EXPECTED_VERSION"
+          $install = Start-Process -FilePath $installerPath -ArgumentList "/S" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Silent NSIS install of the signed production installer failed with exit code $($install.ExitCode)." }
+          $installed = Get-ChildItem "$env:LOCALAPPDATA" -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in @("codeforge-desktop.exe", "CodeForge.exe") } |
+            Select-Object -First 1
+          if (-not $installed) { throw "The signed production installer did not install the CodeForge main binary." }
+          $launch = Start-Process -FilePath $installed.FullName -PassThru
+          Start-Sleep -Seconds 15
+          $launch.Refresh()
+          if ($launch.HasExited) { throw "The installed CodeForge application exited during production launch smoke with code $($launch.ExitCode)." }
+          Stop-Process -Id $launch.Id -Force
+          $launch.WaitForExit()
+          $uninstaller = Get-ChildItem $installed.Directory.FullName -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in @("uninstall.exe", "unins000.exe") } |
+            Select-Object -First 1
+          if (-not $uninstaller) { throw "The installed production application did not contain a discoverable NSIS uninstaller." }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList "/S" -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "Silent NSIS uninstall failed with exit code $($uninstall.ExitCode)." }
+          if (Test-Path $installed.FullName) { throw "The production CodeForge main binary remained after uninstall smoke." }
+          "Signed Windows production installer version, install, launch, and uninstall smoke passed." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - name: Record Windows build metadata and checksum
         shell: pwsh
         run: |
@@ -181,13 +241,27 @@ jobs:
           if (-not (Test-Path release/CodeForge-Windows-Certificate.cer)) {
             throw "The public SignPath signer certificate is missing from the production artifact."
           }
+          $installer = Get-Item -LiteralPath release/CodeForge-Setup-Windows.exe
+          if ($installer.Length -le 0) { throw "The signed Windows production installer is empty." }
           $hash = (Get-FileHash release/CodeForge-Setup-Windows.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $versionMetadataHash = (Get-FileHash release/WINDOWS-VERSION-METADATA.json -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  CodeForge-Setup-Windows.exe" | Set-Content -Path release/SHA256-Windows.txt -Encoding ascii -NoNewline
+          $tauriConfig = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $desktopPackage = Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json
           @(
             "COMMIT=$env:GITHUB_SHA",
             "WORKFLOW_RUN_ID=$env:GITHUB_RUN_ID",
             "RUN_NUMBER=$env:GITHUB_RUN_NUMBER",
-            "VERSION=1.0.$env:GITHUB_RUN_NUMBER",
+            "PRODUCT=$($tauriConfig.productName)",
+            "PACKAGE=$($tauriConfig.identifier)",
+            "VERSION=$($tauriConfig.version)",
+            "PACKAGE_VERSION=$($desktopPackage.version)",
+            "TARGET_TRIPLE=x86_64-pc-windows-msvc",
+            "BUNDLE=NSIS",
+            "INSTALL_MODE=$($tauriConfig.bundle.windows.nsis.installMode)",
+            "SIZE_BYTES=$($installer.Length)",
+            "SHA256=$hash",
+            "VERSION_METADATA_SHA256=$versionMetadataHash",
             $signing
           ) | Set-Content -Path release/BUILD-METADATA.txt -Encoding utf8
       - uses: actions/upload-artifact@v4
@@ -197,6 +271,7 @@ jobs:
             release/CodeForge-Setup-Windows.exe
             release/CodeForge-Windows-Certificate.cer
             release/WINDOWS-SIGNING-METADATA.txt
+            release/WINDOWS-VERSION-METADATA.json
             release/BUILD-METADATA.txt
             release/SHA256-Windows.txt
           if-no-files-found: error
@@ -211,6 +286,11 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+      - name: Verify exact source revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
