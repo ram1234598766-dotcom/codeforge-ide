@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 
 function normalizeWindowsVersion(value) {
   if (typeof value !== 'string') return null;
-  const match = value.trim().match(/^(\\d+\\.\\d+\\.\\d+)(?:\\.0)?$/);
+  const match = value.trim().match(/^(\d+\.\d+\.\d+)(?:\.0)?$/);
   return match ? match[1] : null;
 }
 
 export function verifyWindowsInstallerVersion(metadata, expectedVersion) {
   const expected = normalizeWindowsVersion(expectedVersion);
-  if (!expected || !/^1\\.0\\.\\d+$/.test(expected)) {
+  if (!expected || !/^1\.0\.\d+$/.test(expected)) {
     throw new Error('Expected Windows installer version must use the monotonic 1.0.<run-number> format.');
   }
 
