@@ -27,7 +27,7 @@ test('verifies SPA, Android /app, API configuration, assets and auth guard', asy
   const result = await verifyHostedApp({baseUrl:'https://codeforge.example',fetchImpl:buildFetch()});
   assert.equal(result.appRoute.status,200);
   assert.equal(result.deepLinkRoute.status,200);
-  assert.match(result.deepLinkRoute.contentType,/text\\/html/i);
+  assert.match(result.deepLinkRoute.contentType, new RegExp('text/html', 'i'));
   assert.equal(result.health.database,'connected');
   assert.equal(result.authGuard.status,401);
   assert.deepEqual(result.assets.map(asset=>asset.path).sort(), ['/assets/app-abc.css','/assets/app-abc.js']);
