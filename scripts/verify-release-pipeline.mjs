@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { latestPublishedRunNumber, shouldPublishRelease, main as checkReleaseSequence } from './check-release-sequence.mjs';
 import { blockedAndroidPermissions } from './verify-android-permissions.mjs';
 import { extractApksignerCertificateFingerprint } from './extract-apksigner-cert.mjs';
+import { verifyWindowsInstallerVersion } from './verify-windows-installer-version.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
@@ -16,6 +17,7 @@ const legacyUnsignedPublisher = read('../.github/workflows/publish-unsigned-rele
 const versionedReleasePublisher = read('../.github/workflows/publish-versioned-release.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
+const windowsVersionVerifier = read('../scripts/verify-windows-installer-version.mjs');
 const deploy = read('../.github/workflows/deploy-worker.yml');
 const wrangler = read('../wrangler.toml');
 const workerEntry = read('../apps/web/functions/index.ts');
@@ -57,6 +59,24 @@ const androidMetadataTests = read('../scripts/verify-android-apk-metadata.test.m
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
+
+const windowsVersionFixture = verifyWindowsInstallerVersion(
+  { ProductVersion: '1.0.38', FileVersion: '1.0.38.0' },
+  '1.0.38',
+);
+assert.deepEqual(windowsVersionFixture, {
+  expectedVersion: '1.0.38',
+  productVersion: '1.0.38',
+  fileVersion: '1.0.38',
+});
+assert.throws(
+  () => verifyWindowsInstallerVersion({ ProductVersion: '1.0.0', FileVersion: '1.0.0' }, '1.0.38'),
+  /must match expected version/,
+);
+assert.throws(
+  () => verifyWindowsInstallerVersion({ ProductVersion: '', FileVersion: '1.0.38' }, '1.0.38'),
+  /must match expected version/,
+);
 
 const apksignerFixtureFingerprint = 'F96C203D70D2A90D853E35652D7C63758122F5C4B3EE674978F919C3F814F897';
 assert.equal(
@@ -244,6 +264,24 @@ assert.match(installers, /name: Install and launch production-signed APK in disp
 assert.match(installers, /reactivecircus\/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
 assert.ok(installers.includes('script: bash scripts/android-install-smoke.sh release/CodeForge.apk'), 'The final signed Android APK must pass the hosted WebView readiness smoke test.');
 assert.match(installers, /on:\s*push:\s*branches: \[main\]/, 'Every update pushed to main must trigger the paired installer build pipeline.');
+
+const windowsProductionJob = installers.slice(installers.indexOf('  windows:'), installers.indexOf('  android:'));
+const androidProductionJob = installers.slice(installers.indexOf('  android:'));
+assert.match(androidProductionJob, /name: Verify exact source revision/, 'The production Android job must assert the exact main source SHA.');
+assert.ok(androidProductionJob.includes('EXPECTED_SHA: ${{ github.sha }}'), 'The Android source SHA assertion must use the triggering commit SHA.');
+assert.ok(androidProductionJob.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"'), 'The Android build must fail closed on a checkout SHA mismatch.');
+assert.match(windowsProductionJob, /name: Set monotonic Windows app version/, 'The production Windows bundle must receive a monotonic version before building.');
+for (const path of ['apps/desktop/src-tauri/tauri.conf.json', 'apps/desktop/src-tauri/Cargo.toml', 'apps/desktop/package.json']) {
+  assert.ok(windowsProductionJob.includes(path), 'The Windows release build must synchronize its app version in ' + path + '.');
+}
+assert.ok(windowsProductionJob.includes('verify-windows-installer-version.mjs'), 'The production Windows installer must validate its actual PE version metadata.');
+assert.match(windowsProductionJob, /name: Install, launch, verify, and uninstall production-signed Windows installer/, 'The exact signed Windows production installer must pass install/launch/uninstall smoke.');
+const windowsSignatureIndex = windowsProductionJob.indexOf('name: Verify and stage SignPath-signed Windows installer');
+const windowsSmokeIndex = windowsProductionJob.indexOf('name: Install, launch, verify, and uninstall production-signed Windows installer');
+const windowsMetadataIndex = windowsProductionJob.indexOf('name: Record Windows build metadata and checksum');
+assert.ok(windowsSignatureIndex >= 0 && windowsSmokeIndex > windowsSignatureIndex && windowsMetadataIndex > windowsSmokeIndex, 'Windows signing, install smoke, and metadata staging must run in that order.');
+assert.ok(publisher.includes('verify-windows-installer-version.mjs'), 'The paired publisher must independently revalidate the downloaded Windows EXE version metadata.');
+assert.ok(windowsVersionVerifier.includes('ProductVersion') && windowsVersionVerifier.includes('FileVersion'), 'Windows version validation must inspect both PE product and file version metadata.');
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 for (const [name, workflow] of [
