@@ -57,7 +57,7 @@ test('requires no-store HTML on nested /app routes after production deployment',
         '/app/workspaces':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
       })
     }),
-    /\\/app\\/workspaces HTML must not be cached/
+    new RegExp('/app/workspaces HTML must not be cached')
   );
 });
 
@@ -72,7 +72,7 @@ test('rejects a nested /app path that bypasses SPA fallback', async () => {
         })
       })
     }),
-    /\\/app\\/workspaces did not return the CodeForge SPA document/
+    new RegExp('/app/workspaces did not return the CodeForge SPA document')
   );
 });
 
