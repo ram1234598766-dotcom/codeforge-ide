@@ -29,6 +29,9 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Download Windows installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -51,6 +54,7 @@ jobs:
             "release/windows/CodeForge-Windows-Certificate.cer",
             "release/windows/WINDOWS-SIGNING-METADATA.txt",
             "release/windows/BUILD-METADATA.txt",
+            "release/windows/WINDOWS-VERSION-METADATA.json",
             "release/windows/SHA256-Windows.txt"
           )
           foreach ($file in $requiredFiles) {
@@ -85,9 +89,41 @@ jobs:
             throw "The Windows installer SHA-256 checksum does not match."
           }
           $build = Get-Content release/windows/BUILD-METADATA.txt
-          foreach ($required in @("COMMIT=$env:SOURCE_SHA", "WORKFLOW_RUN_ID=$env:UPSTREAM_RUN_ID", "RUN_NUMBER=$env:RUN_NUMBER", "SIGNING=durable")) {
+          $expectedVersion = "1.0.$env:RUN_NUMBER"
+          foreach ($required in @(
+            "COMMIT=$env:SOURCE_SHA",
+            "WORKFLOW_RUN_ID=$env:UPSTREAM_RUN_ID",
+            "RUN_NUMBER=$env:RUN_NUMBER",
+            "PRODUCT=CodeForge",
+            "PACKAGE=com.codeforge.ide",
+            "VERSION=$expectedVersion",
+            "PACKAGE_VERSION=$expectedVersion",
+            "TARGET_TRIPLE=x86_64-pc-windows-msvc",
+            "BUNDLE=NSIS",
+            "INSTALL_MODE=currentUser",
+            "SIGNING=durable"
+          )) {
             if ($build -notcontains $required) { throw "Windows build provenance is missing: $required" }
           }
+          $installer = Get-Item -LiteralPath release/windows/CodeForge-Setup-Windows.exe
+          if ($installer.Length -le 0) { throw "The downloaded Windows installer is empty." }
+          $recordedSize = (($build | Where-Object { $_ -like "SIZE_BYTES=*" } | Select-Object -First 1) -replace "^SIZE_BYTES=", "")
+          if ($recordedSize -ne [string]$installer.Length) { throw "Windows installer size does not match build provenance." }
+          $recordedHash = (($build | Where-Object { $_ -like "SHA256=*" } | Select-Object -First 1) -replace "^SHA256=", "").ToLowerInvariant()
+          if ($recordedHash -ne $installerHash) { throw "Windows installer hash does not match build provenance." }
+          $recordedVersionMetadataHash = (($build | Where-Object { $_ -like "VERSION_METADATA_SHA256=*" } | Select-Object -First 1) -replace "^VERSION_METADATA_SHA256=", "").ToLowerInvariant()
+          $actualVersionMetadataHash = (Get-FileHash release/windows/WINDOWS-VERSION-METADATA.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($recordedVersionMetadataHash -ne $actualVersionMetadataHash) { throw "Windows version metadata checksum does not match build provenance." }
+          $recordedVersionMetadata = Get-Content release/windows/WINDOWS-VERSION-METADATA.json -Raw | ConvertFrom-Json
+          $actualVersionInfo = $installer.VersionInfo
+          if ([string]$recordedVersionMetadata.ProductVersion -ne [string]$actualVersionInfo.ProductVersion -or [string]$recordedVersionMetadata.FileVersion -ne [string]$actualVersionInfo.FileVersion) {
+            throw "Recorded Windows version metadata does not match the downloaded EXE's actual PE version resource."
+          }
+          @{
+            ProductVersion = [string]$actualVersionInfo.ProductVersion
+            FileVersion = [string]$actualVersionInfo.FileVersion
+          } | ConvertTo-Json -Compress | Set-Content -Path release/windows/WINDOWS-VERSION-METADATA-REVALIDATED.json -Encoding utf8
+          node scripts/verify-windows-installer-version.mjs release/windows/WINDOWS-VERSION-METADATA-REVALIDATED.json "$expectedVersion"
 
   verify-android:
     name: Verify durable Android APK signature
