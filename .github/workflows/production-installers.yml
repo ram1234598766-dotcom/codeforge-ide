@@ -111,7 +111,7 @@ jobs:
           path: release/CodeForge-Setup-Windows.exe
           archive: false
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
       # Pin the official SignPath action to the immutable v3 commit.
       - name: Submit Windows installer to SignPath Foundation
         id: signpath-windows-signing
