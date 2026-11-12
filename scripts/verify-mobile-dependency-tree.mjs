@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const requiredVersions = Object.freeze({
   glob: '14.0.2',
@@ -51,12 +52,14 @@ export function verifyDependencyTree(tree) {
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
 if (import.meta.url === invokedPath) {
-  const output = execFileSync('npm', ['ls', '--all', '--json'], {
+  const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const output = execFileSync('npm', ['ls', '--workspace=@codeforge/mobile', '--all', '--json'], {
+    cwd: repositoryRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const found = verifyDependencyTree(JSON.parse(output));
-  console.log('Verified mobile tooling dependency tree: '
+  console.log('Verified mobile workspace dependency tree: '
     + 'glob=' + (found.glob.length ? [...new Set(found.glob)].join(',') : 'absent')
     + '; minimatch=' + (found.minimatch.length ? [...new Set(found.minimatch)].join(',') : 'absent'));
 }
