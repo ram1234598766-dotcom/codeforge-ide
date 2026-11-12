@@ -75,7 +75,8 @@ test('dependency verifier rejects vulnerable minimatch versions', () => {
 test('Android CI enforces the moderate audit threshold and inspects the complete resolved tree', () => {
   assert.match(nativeWorkflow, /npm audit --audit-level=moderate/);
   assert.match(nativeWorkflow, /verify-mobile-dependency-tree\.mjs/);
-  assert.match(verifierSource, /npm', \['ls', '--all', '--json'\]/);
+  assert.match(verifierSource, /npm', \['ls', '--workspace=@codeforge\/mobile', '--all', '--json'\]/);
+  assert.match(verifierSource, /cwd: repositoryRoot/);
 });
 
 test('release-policy CI runs this dependency regression suite', () => {
