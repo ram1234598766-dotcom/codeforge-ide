@@ -117,6 +117,7 @@ assert.ok(publisher.includes('TimeStamperCertificate'), 'The paired publisher mu
 assert.ok(installers.includes('TIMESTAMP_CERT_THUMBPRINT='), 'Windows signing metadata must bind the timestamp certificate identity.');
 assert.ok(publisher.includes('TIMESTAMP_CERT_THUMBPRINT='), 'The Windows release verifier must compare the timestamp certificate identity.');
 assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input'), 'Unsigned SignPath input must be clearly labeled as a non-production diagnostic artifact.');
+assert.match(installers, /name: Upload unsigned installer to GitHub for SignPath[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input[\s\S]*?retention-days: 7/, 'Unsigned Windows SignPath input must remain available for at least seven days as a diagnostic-only Actions artifact.');
 assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-'), 'Android signing failures must retain only a clearly labeled diagnostic artifact.');
 assert.ok(installers.includes("steps.android-signing-run.outcome == 'failure'"), 'Android diagnostic upload must be restricted to durable signing failures.');
 assert.ok(installers.includes('INSTALLABLE_FOR_PRODUCTION=false'), 'Android diagnostic metadata must explicitly prohibit production installation.');
