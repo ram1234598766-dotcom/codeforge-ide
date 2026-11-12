@@ -31,17 +31,26 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
   }
   await rootResponse.text();
 
-  const appResponse = await expectOk(fetchImpl, request('/app'), '/app', 'text/html');
-  const appType = appResponse.headers.get('content-type') || '';
-  if (!appType.toLowerCase().includes('text/html')) {
-    throw new Error('/app returned an unexpected content type: ' + appType);
+  async function verifySpaRoute(path) {
+    const response = await expectOk(fetchImpl, request(path), path, 'text/html');
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('text/html')) {
+      throw new Error(path + ' returned an unexpected content type: ' + contentType);
+    }
+    const html = await response.text();
+    if (!html.includes('id="root"')) {
+      throw new Error(path + ' did not return the CodeForge SPA document.');
+    }
+    const cacheControl = (response.headers.get('cache-control') || '').toLowerCase();
+    if (requireNoStoreHeaders && !cacheControl.includes('no-store') && !cacheControl.includes('no-cache')) {
+      throw new Error(path + ' HTML must not be cached, otherwise Android can retain stale asset manifests.');
+    }
+    return { status: response.status, contentType, cacheControl, html };
   }
-  const html = await appResponse.text();
-  if (!html.includes('id="root"')) throw new Error('/app did not return the CodeForge SPA document.');
-  const cacheControl = (appResponse.headers.get('cache-control') || '').toLowerCase();
-  if (requireNoStoreHeaders && !cacheControl.includes('no-store') && !cacheControl.includes('no-cache')) {
-    throw new Error('/app HTML must not be cached, otherwise Android can retain stale asset manifests.');
-  }
+
+  const appRoute = await verifySpaRoute('/app');
+  const deepLinkRoute = await verifySpaRoute('/app/workspaces');
+  const html = appRoute.html;
 
   const assetPaths = [...html.matchAll(/(?:src|href)=["']([^"']+)["']/g)]
     .map(match => new URL(match[1], origin).pathname)
@@ -90,7 +99,16 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
 
   return {
     rootRoute: { status: rootResponse.status, contentType: rootType },
-    appRoute: { status: appResponse.status, contentType: appType, cacheControl },
+    appRoute: {
+      status: appRoute.status,
+      contentType: appRoute.contentType,
+      cacheControl: appRoute.cacheControl,
+    },
+    deepLinkRoute: {
+      status: deepLinkRoute.status,
+      contentType: deepLinkRoute.contentType,
+      cacheControl: deepLinkRoute.cacheControl,
+    },
     health,
     authGuard: { status: authResponse.status },
     assets,
@@ -102,8 +120,10 @@ if (import.meta.url === invokedPath) {
   verifyHostedApp({ baseUrl: process.env.CODEFORGE_BASE_URL || DEFAULT_BASE_URL, requireNoStoreHeaders: process.env.REQUIRE_NO_STORE_HEADERS === 'true' })
     .then(result => {
       console.log('Hosted CodeForge routes, API guard, and static assets verified.');
-      if (!result.appRoute.cacheControl.includes('no-store') && !result.appRoute.cacheControl.includes('no-cache')) {
-        console.warn('The current deployment still serves cacheable /app HTML; the next approved production deployment must apply the no-store HTML policy.');
+      for (const [path, route] of [['/app', result.appRoute], ['/app/workspaces', result.deepLinkRoute]]) {
+        if (!route.cacheControl.includes('no-store') && !route.cacheControl.includes('no-cache')) {
+          console.warn('The current deployment still serves cacheable ' + path + ' HTML; the next approved production deployment must apply the no-store HTML policy.');
+        }
       }
       console.log(JSON.stringify(result, null, 2));
     })
