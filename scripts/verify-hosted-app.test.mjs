@@ -106,7 +106,7 @@ test('rejects a missing SPA asset', async () => {
 
 test('routes both Android SPA entry paths through Worker HTML cache policy', () => {
   const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
-  const routesMatch = wrangler.match(/^\\s*run_worker_first\\s*=\\s*\\[([^\\]]*)\\]/m);
+  const routesMatch = wrangler.match(/^\s*run_worker_first\s*=\s*\[([^\]]*)\]/m);
   assert.ok(routesMatch, 'wrangler.toml must define assets.run_worker_first');
 
   const workerFirstRoutes = [...routesMatch[1].matchAll(/"([^"]+)"/g)].map(match => match[1]);
