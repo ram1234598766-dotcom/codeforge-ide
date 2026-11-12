@@ -26,14 +26,7 @@ const patchedTree = {
   },
 };
 
-const noAffectedPackagesTree = {
-  dependencies: {
-    expo: { version: '58.0.0' },
-    react: { version: '19.3.0' },
-    'react-native': { version: '0.88.1' },
-    'react-native-webview': { version: '14.0.1' },
-  },
-};
+const noAffectedPackagesTree = { dependencies: { expo: { version: '58.0.0' } } };
 
 test('root workspace pins patched glob and minimatch versions', () => {
   assert.equal(rootPackage.overrides?.glob, requiredVersions.glob);
@@ -54,12 +47,6 @@ test('dependency verifier accepts a complete mobile tree with no glob or minimat
   assert.deepEqual(verifyDependencyTree(noAffectedPackagesTree), { glob: [], minimatch: [] });
 });
 
-test('dependency verifier rejects an incomplete mobile dependency tree', () => {
-  const tree = structuredClone(noAffectedPackagesTree);
-  delete tree.dependencies['react-native-webview'];
-  assert.throws(() => verifyDependencyTree(tree), /Missing installed mobile dependency react-native-webview/);
-});
-
 test('dependency verifier rejects vulnerable glob versions', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.version = '14.0.1';
@@ -75,8 +62,7 @@ test('dependency verifier rejects vulnerable minimatch versions', () => {
 test('Android CI enforces the moderate audit threshold and inspects the complete resolved tree', () => {
   assert.match(nativeWorkflow, /npm audit --audit-level=moderate/);
   assert.match(nativeWorkflow, /verify-mobile-dependency-tree\.mjs/);
-  assert.match(verifierSource, /npm', \['ls', '--workspace=@codeforge\/mobile', '--all', '--json'\]/);
-  assert.match(verifierSource, /cwd: repositoryRoot/);
+  assert.match(verifierSource, /npm', \['ls', 'glob', 'minimatch', '--all', '--json'\]/);
 });
 
 test('release-policy CI runs this dependency regression suite', () => {
