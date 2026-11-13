@@ -39,6 +39,8 @@ assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "
 assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
 assert.ok(deploy.includes('test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"'), 'D1 migrations must require separate confirmation.');
 assert.ok(deploy.includes('node scripts/verify-hosted-app.mjs'), 'Production deploy must verify the hosted SPA, APIs and assets after deployment.');
+assert.match(deploy, /REQUIRE_NO_STORE_HEADERS:\s*['"]true['"]/, 'Production deployment must fail unless the live /app HTML response is no-store.');
+
 assert.ok(deploy.includes("if: ${{ inputs.apply_d1_migrations == 'true' }}"), 'D1 migration steps must be opt-in.');
 assert.ok(!deploy.includes('wrangler@4 secret put'), 'Deployment workflow must not mutate Worker secrets.');
 assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
