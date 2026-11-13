@@ -191,6 +191,13 @@ assert.ok(
 const productionApkMetadataStep = installers.indexOf("name: Parse production APK manifest and align pre-sign APK");
 const productionPermissionGateStep = installers.indexOf("name: Verify Android permission allowlist");
 const productionSigningStep = installers.indexOf("name: Sign APK with durable production keystore");
+const finalPermissionGate = installers.indexOf("node scripts/verify-android-permissions.mjs release/APK-METADATA-FINAL.txt");
+const finalZipAlignmentGate = installers.indexOf('zipalign" -c 4 release/CodeForge.apk');
+const finalApkSignatureGate = installers.indexOf('apksigner" verify --verbose --Werr --print-certs release/CodeForge.apk');
+assert.ok(finalPermissionGate > productionSigningStep, "The final signed APK must be re-parsed and pass the Android permission allowlist after signing.");
+assert.ok(finalZipAlignmentGate > productionSigningStep, "The final signed APK must pass zipalign -c 4 after signing.");
+assert.ok(finalApkSignatureGate > productionSigningStep, "The final signed APK must pass strict apksigner verification after signing.");
+
 assert.ok(productionApkMetadataStep >= 0, "The production APK metadata must be extracted before permission validation.");
 assert.ok(
   productionPermissionGateStep > productionApkMetadataStep
