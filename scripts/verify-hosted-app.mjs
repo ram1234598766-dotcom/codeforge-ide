@@ -29,7 +29,12 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
   if (!rootType.toLowerCase().includes('text/html')) {
     throw new Error('/ returned an unexpected content type: ' + rootType);
   }
-  await rootResponse.text();
+  const rootHtml = await rootResponse.text();
+  if (!rootHtml.includes('id="root"')) throw new Error('/ did not return the CodeForge SPA document.');
+  const rootCacheControl = (rootResponse.headers.get('cache-control') || '').toLowerCase();
+  if (requireNoStoreHeaders && !rootCacheControl.includes('no-store') && !rootCacheControl.includes('no-cache')) {
+    throw new Error('/ HTML must not be cached, otherwise Android can retain stale asset manifests.');
+  }
 
   async function verifySpaRoute(path) {
     const response = await expectOk(fetchImpl, request(path), path, 'text/html');
@@ -98,7 +103,7 @@ export async function verifyHostedApp({ baseUrl = DEFAULT_BASE_URL, fetchImpl = 
   }
 
   return {
-    rootRoute: { status: rootResponse.status, contentType: rootType },
+    rootRoute: { status: rootResponse.status, contentType: rootType, cacheControl: rootCacheControl },
     appRoute: {
       status: appRoute.status,
       contentType: appRoute.contentType,
@@ -120,7 +125,7 @@ if (import.meta.url === invokedPath) {
   verifyHostedApp({ baseUrl: process.env.CODEFORGE_BASE_URL || DEFAULT_BASE_URL, requireNoStoreHeaders: process.env.REQUIRE_NO_STORE_HEADERS === 'true' })
     .then(result => {
       console.log('Hosted CodeForge routes, API guard, and static assets verified.');
-      for (const [path, route] of [['/app', result.appRoute], ['/app/workspaces', result.deepLinkRoute]]) {
+      for (const [path, route] of [['/', result.rootRoute], ['/app', result.appRoute], ['/app/workspaces', result.deepLinkRoute]]) {
         if (!route.cacheControl.includes('no-store') && !route.cacheControl.includes('no-cache')) {
           console.warn('The current deployment still serves cacheable ' + path + ' HTML; the next approved production deployment must apply the no-store HTML policy.');
         }

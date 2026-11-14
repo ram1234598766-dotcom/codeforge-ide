@@ -34,6 +34,20 @@ test('verifies SPA, Android /app, API configuration, assets and auth guard', asy
   assert.deepEqual(result.assets.map(asset=>asset.path).sort(), ['/assets/app-abc.css','/assets/app-abc.js']);
 });
 
+test('requires no-store root SPA HTML when validating a completed production deployment', async () => {
+  const html = '<!doctype html><html><body><div id="root"></div></html>';
+  await assert.rejects(
+    verifyHostedApp({
+      baseUrl:'https://codeforge.example',
+      requireNoStoreHeaders:true,
+      fetchImpl:buildFetch({
+        '/':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
+      })
+    }),
+    /\\/ HTML must not be cached/
+  );
+});
+
 test('requires no-store HTML when validating a completed production deployment', async () => {
   const html = '<!doctype html><html><body><div id="root"></div><script src="/assets/app-abc.js"></script><link rel="stylesheet" href="/assets/app-abc.css"></html>';
   await assert.rejects(
