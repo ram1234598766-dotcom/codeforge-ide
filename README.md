@@ -20,20 +20,16 @@ The long-term goal is to make software development feel like working with an exp
 CodeForge is being developed as three connected experiences:
 
 - **Web:** a limited browser preview for exploring the workspace and account experience. It is not the complete IDE.
-- **Windows desktop:** a dedicated desktop application is available as an unsigned preview installer. The current app is still a hosted-workspace shell; native project runtimes and autonomous test-and-repair are not included yet.
-- **Android:** an Android app shell is available as an unsigned preview APK. The current app is still a hosted-workspace shell; native project runtimes and autonomous test-and-repair are not included yet. The currently published APK is unsigned and cannot be installed by Android as published; it is provided for inspection/testing only until it is signed with an app certificate.
+- **Windows desktop:** a desktop application shell exists, but the archived unsigned preview installer is not a supported download. The current app is still a hosted-workspace shell; native project runtimes and autonomous test-and-repair are not included yet.
+- **Android:** an Android app shell exists, but the archived v1.0.26 APK is unsigned and cannot be installed. No APK is currently offered as a supported download. The current app is still a hosted-workspace shell; native project runtimes and autonomous test-and-repair are not included yet.
 
 The autonomous run-test-diagnose-repair cycle and full Node.js, Python, and Linux execution are product goals, not features claimed as complete in this release.
 
-## Latest preview release
+## Downloads
 
-**[CodeForge v1.0.26 — unsigned preview](https://github.com/ram1234598766-dotcom/codeforge-ide/releases/tag/v1.0.26)**
+No verified paired signed release is currently available. Native installer downloads remain disabled until the Windows EXE and Android APK are built from the same exact source commit and both pass durable signing, integrity, and install/launch verification.
 
-The release includes the Windows installer and Android APK, along with build metadata and SHA-256 checksums. Both installers are unsigned:
-
-- Windows may show an unknown-publisher or SmartScreen warning.
-- Android cannot install the currently published APK because it has no package signature. It is for inspection/testing only.
-- Verify the SHA-256 values in the release before using either file.
+The historical v1.0.26 release remains in GitHub Releases for audit history only. Its Windows installer is unsigned, and its Android APK is unsigned and cannot be installed. Do not download or install those historical binaries.
 
 ## Project direction
 
