@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { verifyHostedApp } from './verify-hosted-app.mjs';
 
 function buildFetch(overrides = {}) {
@@ -7,6 +8,7 @@ function buildFetch(overrides = {}) {
   const responses = new Map([
     ['/', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate'}})],
     ['/app', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate'}})],
+    ['/app/workspaces', new Response(html, {status: 200, headers: {'content-type':'text/html; charset=utf-8','cache-control':'no-store, no-cache, must-revalidate'}})],
     ['/api/health', new Response(JSON.stringify({ok:true,database:'connected'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/config', new Response(JSON.stringify({url:'https://project.supabase.co',publishableKey:'sb_publishable_test'}), {status:200, headers:{'content-type':'application/json'}})],
     ['/api/workspaces', new Response(JSON.stringify({error:'Authentication required'}), {status:401, headers:{'content-type':'application/json'}})],
@@ -25,9 +27,25 @@ function buildFetch(overrides = {}) {
 test('verifies SPA, Android /app, API configuration, assets and auth guard', async () => {
   const result = await verifyHostedApp({baseUrl:'https://codeforge.example',fetchImpl:buildFetch()});
   assert.equal(result.appRoute.status,200);
+  assert.equal(result.deepLinkRoute.status,200);
+  assert.match(result.deepLinkRoute.contentType, new RegExp('text/html', 'i'));
   assert.equal(result.health.database,'connected');
   assert.equal(result.authGuard.status,401);
   assert.deepEqual(result.assets.map(asset=>asset.path).sort(), ['/assets/app-abc.css','/assets/app-abc.js']);
+});
+
+test('requires no-store root SPA HTML when validating a completed production deployment', async () => {
+  const html = '<!doctype html><html><body><div id="root"></div></html>';
+  await assert.rejects(
+    verifyHostedApp({
+      baseUrl:'https://codeforge.example',
+      requireNoStoreHeaders:true,
+      fetchImpl:buildFetch({
+        '/':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
+      })
+    }),
+    /HTML must not be cached/
+  );
 });
 
 test('requires no-store HTML when validating a completed production deployment', async () => {
@@ -41,6 +59,35 @@ test('requires no-store HTML when validating a completed production deployment',
       })
     }),
     /\/app HTML must not be cached/
+  );
+});
+
+test('requires no-store HTML on nested /app routes after production deployment', async () => {
+  const html = '<!doctype html><html><body><div id="root"></div></html>';
+  await assert.rejects(
+    verifyHostedApp({
+      baseUrl:'https://codeforge.example',
+      requireNoStoreHeaders:true,
+      fetchImpl:buildFetch({
+        '/app/workspaces':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
+      })
+    }),
+    new RegExp('/app/workspaces HTML must not be cached')
+  );
+});
+
+test('rejects a nested /app path that bypasses SPA fallback', async () => {
+  await assert.rejects(
+    verifyHostedApp({
+      baseUrl:'https://codeforge.example',
+      fetchImpl:buildFetch({
+        '/app/workspaces':new Response('<!doctype html><html><body>not found</body></html>', {
+          status:200,
+          headers:{'content-type':'text/html; charset=utf-8'}
+        })
+      })
+    }),
+    new RegExp('/app/workspaces did not return the CodeForge SPA document')
   );
 });
 
@@ -69,4 +116,18 @@ test('rejects a missing SPA asset', async () => {
     })}),
     /\/assets\/app-abc.js returned HTTP 404/
   );
+});
+
+test('routes both Android SPA entry paths through Worker HTML cache policy', () => {
+  const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  const routesMatch = wrangler.match(/^\s*run_worker_first\s*=\s*\[([^\]]*)\]/m);
+  assert.ok(routesMatch, 'wrangler.toml must define assets.run_worker_first');
+
+  const workerFirstRoutes = [...routesMatch[1].matchAll(/"([^"]+)"/g)].map(match => match[1]);
+  for (const route of ['/api/*', '/', '/index.html', '/app', '/app/*']) {
+    assert.ok(
+      workerFirstRoutes.includes(route),
+      'Cloudflare must run the Worker first for ' + route + ' so SPA HTML receives the no-store cache policy.',
+    );
+  }
 });
