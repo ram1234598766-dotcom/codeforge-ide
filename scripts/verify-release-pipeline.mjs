@@ -57,6 +57,13 @@ const androidMetadataTests = read('../scripts/verify-android-apk-metadata.test.m
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
+const readme = read('../README.md');
+
+assert.ok(readme.includes('No verified paired signed release is currently available.'), 'README must state that no signed paired release is available.');
+assert.ok(readme.includes('The historical v1.0.26 release remains in GitHub Releases for audit history only.'), 'README must label v1.0.26 as historical audit material.');
+assert.ok(!readme.includes('/releases/tag/v1.0.26'), 'README must not link to the historical unsigned release page.');
+assert.ok(!readme.includes('/releases/download/v1.0.26'), 'README must not link directly to historical unsigned release assets.');
+assert.ok(!readme.includes('releases/latest/download'), 'README must not expose a moving release download URL.');
 
 const apksignerFixtureFingerprint = 'F96C203D70D2A90D853E35652D7C63758122F5C4B3EE674978F919C3F814F897';
 assert.equal(
