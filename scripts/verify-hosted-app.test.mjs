@@ -44,7 +44,7 @@ test('requires no-store root SPA HTML when validating a completed production dep
         '/':new Response(html, {status:200,headers:{'content-type':'text/html; charset=utf-8'}})
       })
     }),
-    /\\/ HTML must not be cached/
+    /HTML must not be cached/
   );
 });
 
