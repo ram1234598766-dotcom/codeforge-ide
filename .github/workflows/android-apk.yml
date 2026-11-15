@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify exact source revision
@@ -36,14 +36,14 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/mobile/package.json
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -117,7 +117,7 @@ jobs:
           printf 'SIGNING=ephemeral preview key valid for 30 days; not suitable for production updates\n' >> release/BUILD-METADATA.txt
 
       - name: Upload signed APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
