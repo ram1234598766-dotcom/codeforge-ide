@@ -6,6 +6,11 @@ This document records the repository's declared runtime configuration and the ev
 
 ## Current status — 2026-11-15
 
+### Dependency security update
+
+The root workspace previously pinned `minimatch@11.0.1`. Upstream published two further moderate advisories after that pin: [GHSA-cf2h-pxjq-68xw](https://github.com/isaacs/minimatch/security/advisories/GHSA-cf2h-pxjq-68xw) affects 11.0.0–11.0.6 (quadratic compile time; fixed in 11.0.7), and [GHSA-c859-jr93-m5j4](https://github.com/isaacs/minimatch/security/advisories/GHSA-c859-jr93-m5j4) affects 7.4.0–11.0.7 (literal escaping correctness; fixed in 11.0.8). The mobile tooling override and exact-tree verifier are updated to `11.0.8`. The separate [glob advisory](https://github.com/isaacs/node-glob/security/advisories/GHSA-3g3m-2fjr-6pw4) remains fixed by the existing `glob@14.0.2` pin. These are build-tool dependency constraints; no runtime API or user-data behavior is changed. The mobile package still has no committed lockfile, so reproducible dependency resolution remains an open risk.
+
+
 This evidence snapshot supersedes older status statements below where they conflict. It separates main-branch evidence, unmerged PR CI, and the active production Worker deployment.
 
 ### Main and pull-request verification

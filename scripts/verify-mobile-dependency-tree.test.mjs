@@ -55,8 +55,8 @@ test('dependency verifier rejects vulnerable glob versions', () => {
 
 test('dependency verifier rejects vulnerable minimatch versions', () => {
   const tree = structuredClone(patchedTree);
-  tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.0';
-  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.1/);
+  tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.7';
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.8/);
 });
 
 test('Android CI enforces the moderate audit threshold and inspects the complete resolved tree', () => {

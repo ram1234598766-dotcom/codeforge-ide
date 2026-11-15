@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 export const requiredVersions = Object.freeze({
   glob: '14.0.2',
-  minimatch: '11.0.1',
+  minimatch: '11.0.8',
 });
 
 export function collectDependencyVersions(tree) {
