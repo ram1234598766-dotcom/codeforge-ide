@@ -399,7 +399,10 @@ assert.ok(native.includes("verify-android-webview.mjs"), "Native-shell CI must r
 assert.ok(releasePolicy.includes("verify-android-webview.mjs"), "Release-policy CI must run the Android WebView readiness contract.");
 assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy CI must run hosted-route regression tests.");
 assert.ok(!read("../apps/web/src/styles.css").includes("fonts.googleapis.com"), "The Android-critical stylesheet must not block on Google Fonts.");
-assert.match(home, /VERIFIED SIGNED RELEASE PENDING/);
+assert.ok(home.includes('RELEASE_STATUS_LABEL'), 'The website must derive native status from the paired-release gate.');
+assert.ok(home.includes('WINDOWS 10 / 11 · {RELEASE_STATUS_LABEL}') && home.includes('ANDROID · {RELEASE_STATUS_LABEL}'), 'Both platform cards must share the same paired-release status.');
+assert.match(releaseSource, /RELEASE_STATUS_LABEL[\\s\\S]*NO VERIFIED PAIRED RELEASE/);
+assert.ok(!home.includes('SIGNING IN PROGRESS'), 'The website must not imply signing is underway before a paired release is verified.');
 assert.ok(!home.includes('releases/latest/download') && !home.includes('Self-signed installer'));
 assert.ok(home.includes('PUBLISHED_RELEASE_TAG ? <a'), 'The website must link only to a verified release tag.');
 assert.ok(home.includes('/releases/tag/${PUBLISHED_RELEASE_TAG}'), 'The website release link must target the verified tag only.');
