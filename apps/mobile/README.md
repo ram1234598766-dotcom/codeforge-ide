@@ -26,3 +26,15 @@ Production release signing uses the persistent Android keystore stored in GitHub
 This project uses Expo SDK 58 and React Native 0.88. Use Node.js 22.13.x or newer on the 22.x line, Node.js 24.3.x or newer on the 24.x line, or Node.js 26 or newer. Odd-numbered Node.js major versions are not supported by Expo SDK 58.
 
 Run `npx expo-doctor` from `apps/mobile` after changing Expo or React Native dependencies and before building the native app. The GitHub Actions native-shell workflow runs this diagnostic as part of Android validation.
+
+## WebView readiness contract
+
+The native shell reports CodeForge as ready only after the hosted `/app` React surface sends the `codeforge-ready` bridge message. HTTPS OAuth/provider pages remain usable in the WebView, but they are tracked as external pages and do not count as a mounted CodeForge app. Diagnostic route logging must never include query strings or credentials.
+
+Run the navigation contract tests without installing additional packages:
+
+```sh
+node --test apps/mobile/webview-navigation.test.mjs
+```
+
+This contract test does not substitute for an Android emulator install/launch smoke test or a hosted production-route probe.
