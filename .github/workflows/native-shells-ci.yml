@@ -341,5 +341,7 @@ jobs:
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
       - name: Test Android permission policy
         run: node --test scripts/verify-android-permissions.test.mjs
+      - name: Test Android emulator connectivity preflight
+        run: node --test scripts/verify-android-connectivity.test.mjs
       - name: Verify release signing and download gates
         run: node scripts/verify-release-pipeline.mjs
