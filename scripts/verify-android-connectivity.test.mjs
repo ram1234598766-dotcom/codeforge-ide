@@ -17,6 +17,24 @@ test('accepts a connected, validated active default network', () => {
   assert.equal(result.reason, 'validated');
 });
 
+test('accepts the active default when Android omits state but validates its internet capabilities', () => {
+  const dump = 'Active default network: 106\nCurrent Networks:\n'
+    + agent({ id: 106, state: 'unknown' });
+  const result = parseConnectivityDump(dump);
+  assert.equal(result.ok, true);
+  assert.equal(result.state, 'unknown');
+  assert.equal(result.connectionEvidence, 'validated-active-default-network-capabilities');
+});
+
+test('does not infer connectivity from an unknown state without validated internet', () => {
+  const dump = 'Active default network: 106\nCurrent Networks:\n'
+    + agent({ id: 106, state: 'unknown', capabilities: 'INTERNET&NOT_RESTRICTED&TRUSTED' });
+  const result = parseConnectivityDump(dump);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'active-default-network-not-validated');
+  assert.equal(result.connectionEvidence, 'unverified');
+});
+
 test('does not accept a validated secondary network when the active default is not validated', () => {
   const dump = [
     'Active default network: 104',
@@ -69,5 +87,6 @@ test('summary contains only sanitized network readiness fields', () => {
   const result = parseConnectivityDump('Active default network: 104\n' + agent({ id: 104 }));
   const summary = formatConnectivitySummary(result);
   assert.match(summary, /ACTIVE_DEFAULT_NETWORK_ID=104/);
+  assert.match(summary, /ACTIVE_NETWORK_CONNECTION_EVIDENCE=network-info-connected-state/);
   assert.doesNotMatch(summary, /1234|SSID|DnsAddresses|192\.168\./);
 });
