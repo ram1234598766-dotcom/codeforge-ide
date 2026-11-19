@@ -167,7 +167,7 @@ A successful single CI run is not a ten-pass qualification. Production deploymen
 
 ### Advisory status correction — 2026-11-19
 
-- GitHub withdrew [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) on 18 November 2026. The advisory page now labels the record **Withdrawn** and links to the upstream [picomatch maintainer discussion](https://github.com/micromatch/picomatch/pull/235#issuecomment-6315749381), where the maintainer disputes the reported behavior as a vulnerability. Treat this advisory as withdrawn, not as an active confirmed CVE and not as a patched package release.
+- GitHub withdrew [GHSA-fc5q-39xc-vjpf / CVE-2026-112366](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) on 18 November 2026. The advisory page now labels the record **Withdrawn** and links to the upstream [picomatch maintainer discussion](https://github.com/micromatch/picomatch/pull/235), where the maintainer disputes the reported behavior as a vulnerability. Treat this advisory as withdrawn, not as an active confirmed CVE and not as a patched package release.
 - Do not force a major dependency downgrade, add an unverified override, or claim that a patched picomatch version exists on the basis of this withdrawn record. Reassess if the package maintainer or CNA publishes new evidence.
 - Fresh evidence on PR #65 head `43e8aa4bc5bae4ea5aa0af72f28282c718cd3125` (19 November 2026):
   - [Worker CI run 44239295026](https://github.com/ram1234598766-dotcom/codeforge-ide/actions/runs/44239295026): `npm --prefix apps/web audit --audit-level=high` reported **0 vulnerabilities**.
