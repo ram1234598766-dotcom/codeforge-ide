@@ -10,6 +10,7 @@ assert.match(app, /onHttpError=/, 'WebView must surface HTTP failures.');
 assert.match(app, /onRenderProcessGone=/, 'WebView must recover from renderer termination.');
 assert.match(app, /onContentProcessDidTerminate=/, 'WebView must recover from content-process termination.');
 assert.match(app, /injectedJavaScript=/, 'WebView must verify that the hosted SPA rendered.');
+assert.match(app, /document\\.readyState === 'complete' && readyMarker && appRendered/, 'WebView must require the post-auth React readiness marker and visible app content before reporting ready.');
 assert.ok(webApp.includes('if (authReady) {') && webApp.includes("rootElement?.setAttribute('data-codeforge-app-ready'"), 'The web app must set its readiness marker only after auth initialization completes.');
 assert.match(webApp, /\}, \[authReady\]\);/, 'The web readiness marker must track auth initialization state.');
 assert.ok(app.includes('legacyAuthScreenRendered'), 'Readiness must recognize the real auth screen on older deployed SPA builds.');

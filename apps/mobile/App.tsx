@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
+import { classifyWebViewNavigation } from './webview-navigation.js';
 
 const CODEFORGE_URL = 'https://codeforge-ide.vasudevaya.workers.dev/app';
 const CODEFORGE_ORIGIN = 'https://codeforge-ide.vasudevaya.workers.dev';
@@ -72,7 +73,7 @@ const WEBVIEW_READY_SCRIPT = `
     var legacyWorkspaceRendered = Boolean(previewBanner && (previewBanner.textContent || '').trim().length > 0);
     var appRendered = Boolean(legacyAuthScreenRendered || legacyWorkspaceRendered);
 
-    if (document.readyState === 'complete' && appRendered) {
+    if (document.readyState === 'complete' && readyMarker && appRendered) {
       return postNativeMessage('codeforge-ready', {
         readinessMarker: Boolean(readyMarker),
         authScreen: legacyAuthScreenRendered,
@@ -132,19 +133,14 @@ true;
 `;
 
 function isCodeForgeAppUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.origin === CODEFORGE_ORIGIN
-      && (url.pathname === '/app' || url.pathname.startsWith('/app/'));
-  } catch {
-    return false;
-  }
+  return classifyWebViewNavigation(value, CODEFORGE_ORIGIN) === 'codeforge-app';
 }
 
 export default function App() {
   const webView = useRef<WebView | null>(null);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
+  const [externalPage, setExternalPage] = useState(false);
   const [failed, setFailed] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -172,6 +168,7 @@ export default function App() {
   const retry = () => {
     setFailed(false);
     setReady(false);
+    setExternalPage(false);
     setLoading(true);
     setCanGoBack(false);
     setReloadKey(value => value + 1);
@@ -186,6 +183,7 @@ export default function App() {
   const failMainDocument = () => {
     setLoading(false);
     setReady(false);
+    setExternalPage(false);
     setFailed(true);
   };
 
@@ -213,6 +211,7 @@ export default function App() {
       if (message.type === 'codeforge-ready' && appPath !== '/unknown' && (authScreen || workspaceShell)) {
         logWebViewEvent('readiness=ready path=' + appPath + ' authScreen=' + authScreen + ' workspaceShell=' + workspaceShell);
         setReady(true);
+        setExternalPage(false);
         setLoading(false);
         setFailed(false);
       } else if (message.type === 'codeforge-ready' && appPath !== '/unknown') {
@@ -238,11 +237,16 @@ export default function App() {
 
   const handleNavigationStateChange = (state: { url: string; canGoBack: boolean }) => {
     setCanGoBack(state.canGoBack);
-    if (state.url.startsWith('https://') && !isCodeForgeAppUrl(state.url)) {
-      // OAuth providers and other HTTPS authentication pages remain usable in the WebView.
+    const navigation = classifyWebViewNavigation(state.url, CODEFORGE_ORIGIN);
+    if (navigation === 'external-https') {
+      // OAuth providers remain usable in the WebView, but they are not proof that
+      // the CodeForge React application has mounted successfully.
       setLoading(false);
-      setReady(true);
+      setReady(false);
       setFailed(false);
+      setExternalPage(true);
+    } else if (navigation === 'codeforge-app') {
+      setExternalPage(false);
     }
   };
 
@@ -255,7 +259,7 @@ export default function App() {
         source={{ uri: CODEFORGE_URL }}
         style={styles.webview}
         accessible={true}
-        accessibilityLabel={ready ? 'CodeForge app ready' : 'Loading CodeForge app'}
+        accessibilityLabel={ready ? 'CodeForge app ready' : externalPage ? 'External page open' : 'Loading CodeForge app'}
         originWhitelist={['https://*']}
         javaScriptEnabled
         domStorageEnabled
@@ -273,6 +277,7 @@ export default function App() {
           logWebViewEvent('event=load-start path=' + safePath(event.nativeEvent.url));
           setLoading(true);
           setReady(false);
+          setExternalPage(false);
           setFailed(false);
         }}
         onLoadEnd={event => {
