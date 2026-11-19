@@ -69,11 +69,23 @@ export function parseConnectivityDump(dump) {
     ?? networkBlock.match(/\btype:\s*([A-Z]+)/i)?.[1]?.toUpperCase()
     ?? 'unknown';
 
+  // Some current Android emulator images omit NetworkInfo.state from the
+  // active NetworkAgentInfo dump. In that case, accept the active default
+  // network only when Android itself marks that same network INTERNET and
+  // VALIDATED, and it is not a captive portal. The later WebView smoke still
+  // proves the hosted CodeForge route is actually reachable.
+  const stateUnknown = state === 'unknown';
   let reason = 'validated';
-  if (!connected) reason = 'active-default-network-not-connected';
+  if (!connected && !stateUnknown) reason = 'active-default-network-not-connected';
   else if (!hasInternet) reason = 'active-default-network-no-internet';
   else if (captivePortal) reason = 'active-default-network-captive-portal';
   else if (!validated) reason = 'active-default-network-not-validated';
+
+  const connectionEvidence = connected
+    ? 'network-info-connected-state'
+    : reason === 'validated'
+      ? 'validated-active-default-network-capabilities'
+      : 'unverified';
 
   return {
     ok: reason === 'validated',
@@ -83,6 +95,7 @@ export function parseConnectivityDump(dump) {
     hasInternet,
     validated,
     captivePortal,
+    connectionEvidence,
     reason,
   };
 }
