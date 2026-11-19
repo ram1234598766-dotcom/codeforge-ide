@@ -108,6 +108,7 @@ export function formatConnectivitySummary(result) {
     'ACTIVE_NETWORK_HAS_INTERNET=' + result.hasInternet,
     'ACTIVE_NETWORK_VALIDATED=' + result.validated,
     'ACTIVE_NETWORK_CAPTIVE_PORTAL=' + result.captivePortal,
+    'ACTIVE_NETWORK_CONNECTION_EVIDENCE=' + result.connectionEvidence,
     'VALIDATED_NETWORK=' + result.ok,
     'NETWORK_REASON=' + result.reason,
   ].join('\n') + '\n';
