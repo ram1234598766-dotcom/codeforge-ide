@@ -182,13 +182,14 @@ jobs:
         if: always()
         shell: bash
         run: rm -f "$RUNNER_TEMP/CodeForge-smoke.apk" "$RUNNER_TEMP/codeforge-android-smoke.jks"
-      - uses: actions/upload-artifact@v7
+      - name: Upload non-production Android diagnostic artifacts
+        uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: codeforge-android-ci-apks-and-smoke-diagnostics
+          name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke
           path: release/*
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
 
   dependency-automation-policy:
     name: Validate dependency update coverage
@@ -314,12 +315,13 @@ jobs:
             "SHA256=$hash",
             "SIZE_BYTES=$installerSize"
           ) | Set-Content -Path release/BUILD-METADATA-Windows.txt -Encoding utf8
-      - uses: actions/upload-artifact@v7
+      - name: Upload unsigned Windows NSIS diagnostic artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: codeforge-windows-ci-installer
+          name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke
           path: release/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
   workflow-lint:
     name: Validate workflow YAML and release policy

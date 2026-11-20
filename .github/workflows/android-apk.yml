@@ -116,10 +116,10 @@ jobs:
           printf 'PACKAGE=com.codeforge.ide\n' >> release/BUILD-METADATA.txt
           printf 'SIGNING=ephemeral preview key valid for 30 days; not suitable for production updates\n' >> release/BUILD-METADATA.txt
 
-      - name: Upload signed APK
+      - name: Upload ephemeral-signed Android preview diagnostic APK
         uses: actions/upload-artifact@v7
         with:
-          name: CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}
+          name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             release/CodeForge.apk
             release/SHA256SUMS.txt
@@ -127,4 +127,4 @@ jobs:
             release/APK-METADATA.txt
             release/ANDROID-SIGNING-VERIFICATION.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1

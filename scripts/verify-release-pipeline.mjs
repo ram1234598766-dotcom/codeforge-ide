@@ -176,7 +176,7 @@ assert.ok(
 );
 assert.match(
   native,
-  /name: Upload unsigned Windows NSIS diagnostic artifact[\\s\\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke[\\s\\S]*?retention-days: 1/,
+  /name: Upload unsigned Windows NSIS diagnostic artifact[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke[\s\S]*?retention-days: 1/,
   'Unsigned Windows smoke artifacts must use the diagnostic name and short retention.',
 );
 assert.ok(
@@ -185,7 +185,7 @@ assert.ok(
 );
 assert.match(
   native,
-  /name: Upload non-production Android diagnostic artifacts[\\s\\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke[\\s\\S]*?retention-days: 1/,
+  /name: Upload non-production Android diagnostic artifacts[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke[\s\S]*?retention-days: 1/,
   'Android CI smoke APKs must use the diagnostic name and short retention.',
 );
 assert.ok(
@@ -194,7 +194,7 @@ assert.ok(
 );
 assert.match(
   androidPreview,
-  /name: Upload ephemeral-signed Android preview diagnostic APK[\\s\\S]*?NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-[\\s\\S]*?retention-days: 1/,
+  /name: Upload ephemeral-signed Android preview diagnostic APK[\s\S]*?NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-[\s\S]*?retention-days: 1/,
   'Ephemeral-signed Android preview artifacts must use the diagnostic name and short retention.',
 );
 
