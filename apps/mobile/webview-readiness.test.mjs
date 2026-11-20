@@ -4,14 +4,16 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const appSource = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
-const marker = 'const WEBVIEW_READY_SCRIPT = ' + String.fromCharCode(96);
-const scriptStart = appSource.indexOf(marker);
-assert.notEqual(scriptStart, -1, 'The native shell must expose its injected WebView readiness script.');
-const contentStart = scriptStart + marker.length;
-const contentEnd = appSource.indexOf(String.fromCharCode(96) + ';', contentStart);
-assert.notEqual(contentEnd, -1, 'The injected WebView readiness script must be closed.');
-const scriptSource = appSource.slice(contentStart, contentEnd);
-const readinessScript = runInNewContext(String.fromCharCode(96) + scriptSource + String.fromCharCode(96));
+const identifier = appSource.indexOf('WEBVIEW_READY_SCRIPT');
+assert.notEqual(identifier, -1, 'The native shell must expose its injected WebView readiness script.');
+const assignment = appSource.indexOf('=', identifier + 'WEBVIEW_READY_SCRIPT'.length);
+const backtick = String.fromCharCode(96);
+const opening = appSource.indexOf(backtick, assignment + 1);
+assert.notEqual(opening, -1, 'The injected WebView readiness script must start with a template literal.');
+const closing = appSource.indexOf(backtick + ';', opening + 1);
+assert.notEqual(closing, -1, 'The injected WebView readiness script must be closed.');
+const scriptSource = appSource.slice(opening + 1, closing);
+const readinessScript = runInNewContext(backtick + scriptSource + backtick);
 const origin = 'https://codeforge-ide.vasudevaya.workers.dev';
 
 function runReadiness({
