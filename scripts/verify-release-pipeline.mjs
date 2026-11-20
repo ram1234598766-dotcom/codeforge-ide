@@ -170,6 +170,34 @@ assert.ok(native.includes('release/BUILD-METADATA-Windows.txt'));
 assert.ok(native.includes('"TARGET_TRIPLE=x86_64-pc-windows-msvc"'));
 assert.ok(native.includes('"SIGNING=unsigned"'));
 assert.ok(native.includes('"AUTHENTICODE_STATUS=$($signature.Status)"'));
+assert.ok(
+  native.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke'),
+  'Unsigned Windows NSIS smoke installers must be clearly labeled as non-production diagnostics.',
+);
+assert.match(
+  native,
+  /name: Upload unsigned Windows NSIS diagnostic artifact[\\s\\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke[\\s\\S]*?retention-days: 1/,
+  'Unsigned Windows smoke artifacts must use the diagnostic name and short retention.',
+);
+assert.ok(
+  native.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke'),
+  'Unsigned and ephemeral-signed Android CI APKs must be clearly labeled as non-production diagnostics.',
+);
+assert.match(
+  native,
+  /name: Upload non-production Android diagnostic artifacts[\\s\\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke[\\s\\S]*?retention-days: 1/,
+  'Android CI smoke APKs must use the diagnostic name and short retention.',
+);
+assert.ok(
+  androidPreview.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-'),
+  'An ephemeral-signed Android preview APK must be explicitly labeled non-production.',
+);
+assert.match(
+  androidPreview,
+  /name: Upload ephemeral-signed Android preview diagnostic APK[\\s\\S]*?NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-[\\s\\S]*?retention-days: 1/,
+  'Ephemeral-signed Android preview artifacts must use the diagnostic name and short retention.',
+);
+
 assert.ok(native.includes('"SHA256=$hash"'));
 assert.ok(native.includes('"SIZE_BYTES=$installerSize"'));
 assert.match(native, /android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
