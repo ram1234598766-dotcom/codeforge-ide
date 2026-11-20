@@ -73,7 +73,7 @@ const WEBVIEW_READY_SCRIPT = `
     var legacyWorkspaceRendered = Boolean(previewBanner && (previewBanner.textContent || '').trim().length > 0);
     var appRendered = Boolean(legacyAuthScreenRendered || legacyWorkspaceRendered);
 
-    if (document.readyState === 'complete' && readyMarker && appRendered) {
+    if (document.readyState === 'complete' && appRendered) {
       return postNativeMessage('codeforge-ready', {
         readinessMarker: Boolean(readyMarker),
         authScreen: legacyAuthScreenRendered,

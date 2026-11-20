@@ -4,10 +4,14 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const appSource = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
-const scriptMatch = appSource.match(/const WEBVIEW_READY_SCRIPT = `([\\s\\S]*?)`;/);
-assert.ok(scriptMatch, 'The native shell must expose its injected WebView readiness script.');
-
-const readinessScript = runInNewContext('`' + scriptMatch[1] + '`');
+const marker = 'const WEBVIEW_READY_SCRIPT = ' + String.fromCharCode(96);
+const scriptStart = appSource.indexOf(marker);
+assert.notEqual(scriptStart, -1, 'The native shell must expose its injected WebView readiness script.');
+const contentStart = scriptStart + marker.length;
+const contentEnd = appSource.indexOf(String.fromCharCode(96) + ';', contentStart);
+assert.notEqual(contentEnd, -1, 'The injected WebView readiness script must be closed.');
+const scriptSource = appSource.slice(contentStart, contentEnd);
+const readinessScript = runInNewContext(String.fromCharCode(96) + scriptSource + String.fromCharCode(96));
 const origin = 'https://codeforge-ide.vasudevaya.workers.dev';
 
 function runReadiness({
@@ -72,8 +76,16 @@ test('legacy workspace UI is ready without the newer optional readiness marker',
   assert.equal(messages[0].details.readinessMarker, false);
 });
 
+test('a generic readiness marker without rendered app content is not enough', () => {
+  assert.deepEqual(runReadiness({ readinessMarker: true }), []);
+});
+
 test('a loading placeholder without recognizable app content is not ready', () => {
   assert.deepEqual(runReadiness(), []);
+});
+
+test('visible app content before document completion is not ready', () => {
+  assert.deepEqual(runReadiness({ readyState: 'interactive', authHeading: 'Welcome back.' }), []);
 });
 
 test('non-app routes never report CodeForge readiness', () => {
