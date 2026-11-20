@@ -260,7 +260,7 @@ assert.ok(androidPreview.includes("EXPECTED_SHA: ${{ github.event.pull_request.h
 assert.ok(androidPreview.includes('SOURCE_SHA="$(git rev-parse HEAD)"'));
 assert.ok(androidPreview.includes('test "$SOURCE_SHA" = "$EXPECTED_SHA"'));
 assert.ok(androidPreview.includes(String.raw`printf 'COMMIT=%s\n' "$SOURCE_SHA"`));
-assert.ok(androidPreview.includes("CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}"));
+assert.ok(androidPreview.includes("name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-${{ github.event.pull_request.head.sha || github.sha }}"));
 assert.ok(androidPreview.includes("APK-METADATA.txt"));
 assert.ok(androidPreview.includes("ANDROID-SIGNING-VERIFICATION.txt"));
 assert.ok(!androidPreview.includes("GITHUB_SHA"));
