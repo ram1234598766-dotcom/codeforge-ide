@@ -26,6 +26,7 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/verify-windows-installer-version.mjs"
       - "scripts/verify-android-apk-metadata.mjs"
       - "scripts/verify-android-apk-metadata.test.mjs"
       - "scripts/check-release-sequence.mjs"
@@ -58,6 +59,7 @@ on:
       - ".github/workflows/deploy-worker.yml"
       - ".github/workflows/release-policy.yml"
       - "scripts/verify-release-pipeline.mjs"
+      - "scripts/verify-windows-installer-version.mjs"
       - "scripts/verify-android-apk-metadata.mjs"
       - "scripts/verify-android-apk-metadata.test.mjs"
       - "scripts/check-release-sequence.mjs"
@@ -72,7 +74,7 @@ jobs:
   release-policy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Verify exact source revision
@@ -80,7 +82,7 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Parse GitHub Actions workflow YAML

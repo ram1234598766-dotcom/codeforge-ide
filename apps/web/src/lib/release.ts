@@ -1,5 +1,9 @@
 export const PUBLISHED_RELEASE_TAG: string | null = null;
 
+export const RELEASE_STATUS_LABEL = PUBLISHED_RELEASE_TAG
+  ? `VERIFIED PAIRED RELEASE ${PUBLISHED_RELEASE_TAG}`
+  : 'NO VERIFIED PAIRED RELEASE';
+
 const RELEASE_BASE_URL = 'https://github.com/ram1234598766-dotcom/codeforge-ide/releases/download';
 const ALLOWED_RELEASE_ASSETS = new Set(['CodeForge-Setup-Windows.exe', 'CodeForge.apk']);
 

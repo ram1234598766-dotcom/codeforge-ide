@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { getReleaseDownloadUrl, PUBLISHED_RELEASE_TAG } from './release';
+import { getReleaseDownloadUrl, PUBLISHED_RELEASE_TAG, RELEASE_STATUS_LABEL } from './release';
 
 describe('verified native release downloads', () => {
   it('keeps both installer links disabled until a paired signed release is approved', () => {
     expect(PUBLISHED_RELEASE_TAG).toBeNull();
     expect(getReleaseDownloadUrl('CodeForge-Setup-Windows.exe')).toBeNull();
     expect(getReleaseDownloadUrl('CodeForge.apk')).toBeNull();
+  });
+
+  it('does not imply signing is underway while no paired production release is verified', () => {
+    expect(RELEASE_STATUS_LABEL).toBe('NO VERIFIED PAIRED RELEASE');
   });
 
   it('rejects unapproved assets while native release publication is blocked', () => {

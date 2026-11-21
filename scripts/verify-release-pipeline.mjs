@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { latestPublishedRunNumber, shouldPublishRelease, main as checkReleaseSequence } from './check-release-sequence.mjs';
 import { blockedAndroidPermissions } from './verify-android-permissions.mjs';
 import { extractApksignerCertificateFingerprint } from './extract-apksigner-cert.mjs';
+import { verifyWindowsInstallerVersion } from './verify-windows-installer-version.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const installers = read('../.github/workflows/production-installers.yml');
@@ -16,6 +17,7 @@ const legacyUnsignedPublisher = read('../.github/workflows/publish-unsigned-rele
 const versionedReleasePublisher = read('../.github/workflows/publish-versioned-release.yml');
 const androidPreview = read('../.github/workflows/android-apk.yml');
 const androidSmoke = read('../scripts/android-install-smoke.sh');
+const windowsVersionVerifier = read('../scripts/verify-windows-installer-version.mjs');
 const deploy = read('../.github/workflows/deploy-worker.yml');
 const wrangler = read('../wrangler.toml');
 const workerEntry = read('../apps/web/functions/index.ts');
@@ -37,6 +39,8 @@ assert.ok(deploy.includes('apply_d1_migrations:') && deploy.includes('default: "
 assert.ok(deploy.includes('confirm_d1_migrations:') && deploy.includes('required: false'), 'D1 migration confirmation must be an explicit optional input.');
 assert.ok(deploy.includes('test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"'), 'D1 migrations must require separate confirmation.');
 assert.ok(deploy.includes('node scripts/verify-hosted-app.mjs'), 'Production deploy must verify the hosted SPA, APIs and assets after deployment.');
+assert.match(deploy, /REQUIRE_NO_STORE_HEADERS:\s*['"]true['"]/, 'Production deployment must fail unless the live /app HTML response is no-store.');
+
 assert.ok(deploy.includes("if: ${{ inputs.apply_d1_migrations == 'true' }}"), 'D1 migration steps must be opt-in.');
 assert.ok(!deploy.includes('wrangler@4 secret put'), 'Deployment workflow must not mutate Worker secrets.');
 assert.ok(releasePolicy.includes('Test D1 migrations on a disposable SQLite fixture'), 'Release policy CI must execute the disposable D1 migration fixture tests.');
@@ -57,6 +61,31 @@ const androidMetadataTests = read('../scripts/verify-android-apk-metadata.test.m
 const desktopPreviewPublisher = read('../.github/workflows/publish-desktop-preview.yml');
 const home = read('../apps/web/src/main.tsx');
 const releaseSource = read('../apps/web/src/lib/release.ts');
+const readme = read('../README.md');
+
+const windowsVersionFixture = verifyWindowsInstallerVersion(
+  { ProductVersion: '1.0.38', FileVersion: '1.0.38.0' },
+  '1.0.38',
+);
+assert.deepEqual(windowsVersionFixture, {
+  expectedVersion: '1.0.38',
+  productVersion: '1.0.38',
+  fileVersion: '1.0.38',
+});
+assert.throws(
+  () => verifyWindowsInstallerVersion({ ProductVersion: '1.0.0', FileVersion: '1.0.0' }, '1.0.38'),
+  /must match expected version/,
+);
+assert.throws(
+  () => verifyWindowsInstallerVersion({ ProductVersion: '', FileVersion: '1.0.38' }, '1.0.38'),
+  /must match expected version/,
+);
+
+assert.ok(readme.includes('No verified paired signed release is currently available.'), 'README must state that no signed paired release is available.');
+assert.ok(readme.includes('The historical v1.0.26 release remains in GitHub Releases for audit history only.'), 'README must label v1.0.26 as historical audit material.');
+assert.ok(!readme.includes('/releases/tag/v1.0.26'), 'README must not link to the historical unsigned release page.');
+assert.ok(!readme.includes('/releases/download/v1.0.26'), 'README must not link directly to historical unsigned release assets.');
+assert.ok(!readme.includes('releases/latest/download'), 'README must not expose a moving release download URL.');
 
 const apksignerFixtureFingerprint = 'F96C203D70D2A90D853E35652D7C63758122F5C4B3EE674978F919C3F814F897';
 assert.equal(
@@ -83,7 +112,7 @@ for (const setting of [
   assert.ok(installers.includes(setting), 'Windows SignPath integration must require ' + setting + '.');
 }
 assert.match(installers, /signpath\/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092/);
-assert.match(installers, /uses: actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/);
+assert.match(installers, /uses: actions\/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9/);
 assert.match(installers, /actions: read/);
 assert.match(installers, /GITHUB_REF -ne 'refs\/heads\/main'/);
 assert.match(installers, /archive: false/);
@@ -97,6 +126,7 @@ assert.ok(publisher.includes('TimeStamperCertificate'), 'The paired publisher mu
 assert.ok(installers.includes('TIMESTAMP_CERT_THUMBPRINT='), 'Windows signing metadata must bind the timestamp certificate identity.');
 assert.ok(publisher.includes('TIMESTAMP_CERT_THUMBPRINT='), 'The Windows release verifier must compare the timestamp certificate identity.');
 assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input'), 'Unsigned SignPath input must be clearly labeled as a non-production diagnostic artifact.');
+assert.match(installers, /name: Upload unsigned installer to GitHub for SignPath[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-SignPath-Input[\s\S]*?retention-days: 7/, 'Unsigned Windows SignPath input must remain available for at least seven days as a diagnostic-only Actions artifact.');
 assert.ok(installers.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-'), 'Android signing failures must retain only a clearly labeled diagnostic artifact.');
 assert.ok(installers.includes("steps.android-signing-run.outcome == 'failure'"), 'Android diagnostic upload must be restricted to durable signing failures.');
 assert.ok(installers.includes('INSTALLABLE_FOR_PRODUCTION=false'), 'Android diagnostic metadata must explicitly prohibit production installation.');
@@ -140,6 +170,34 @@ assert.ok(native.includes('release/BUILD-METADATA-Windows.txt'));
 assert.ok(native.includes('"TARGET_TRIPLE=x86_64-pc-windows-msvc"'));
 assert.ok(native.includes('"SIGNING=unsigned"'));
 assert.ok(native.includes('"AUTHENTICODE_STATUS=$($signature.Status)"'));
+assert.ok(
+  native.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke'),
+  'Unsigned Windows NSIS smoke installers must be clearly labeled as non-production diagnostics.',
+);
+assert.match(
+  native,
+  /name: Upload unsigned Windows NSIS diagnostic artifact[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Windows-NSIS-Smoke[\s\S]*?retention-days: 1/,
+  'Unsigned Windows smoke artifacts must use the diagnostic name and short retention.',
+);
+assert.ok(
+  native.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke'),
+  'Unsigned and ephemeral-signed Android CI APKs must be clearly labeled as non-production diagnostics.',
+);
+assert.match(
+  native,
+  /name: Upload non-production Android diagnostic artifacts[\s\S]*?name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-CI-APKs-and-Smoke[\s\S]*?retention-days: 1/,
+  'Android CI smoke APKs must use the diagnostic name and short retention.',
+);
+assert.ok(
+  androidPreview.includes('NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-'),
+  'An ephemeral-signed Android preview APK must be explicitly labeled non-production.',
+);
+assert.match(
+  androidPreview,
+  /name: Upload ephemeral-signed Android preview diagnostic APK[\s\S]*?NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-[\s\S]*?retention-days: 1/,
+  'Ephemeral-signed Android preview artifacts must use the diagnostic name and short retention.',
+);
+
 assert.ok(native.includes('"SHA256=$hash"'));
 assert.ok(native.includes('"SIZE_BYTES=$installerSize"'));
 assert.match(native, /android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
@@ -170,6 +228,13 @@ assert.ok(
 const productionApkMetadataStep = installers.indexOf("name: Parse production APK manifest and align pre-sign APK");
 const productionPermissionGateStep = installers.indexOf("name: Verify Android permission allowlist");
 const productionSigningStep = installers.indexOf("name: Sign APK with durable production keystore");
+const finalPermissionGate = installers.indexOf("node scripts/verify-android-permissions.mjs release/APK-METADATA-FINAL.txt");
+const finalZipAlignmentGate = installers.indexOf('zipalign" -c 4 release/CodeForge.apk');
+const finalApkSignatureGate = installers.indexOf('apksigner" verify --verbose --Werr --print-certs release/CodeForge.apk');
+assert.ok(finalPermissionGate > productionSigningStep, "The final signed APK must be re-parsed and pass the Android permission allowlist after signing.");
+assert.ok(finalZipAlignmentGate > productionSigningStep, "The final signed APK must pass zipalign -c 4 after signing.");
+assert.ok(finalApkSignatureGate > productionSigningStep, "The final signed APK must pass strict apksigner verification after signing.");
+
 assert.ok(productionApkMetadataStep >= 0, "The production APK metadata must be extracted before permission validation.");
 assert.ok(
   productionPermissionGateStep > productionApkMetadataStep
@@ -195,7 +260,7 @@ assert.ok(androidPreview.includes("EXPECTED_SHA: ${{ github.event.pull_request.h
 assert.ok(androidPreview.includes('SOURCE_SHA="$(git rev-parse HEAD)"'));
 assert.ok(androidPreview.includes('test "$SOURCE_SHA" = "$EXPECTED_SHA"'));
 assert.ok(androidPreview.includes(String.raw`printf 'COMMIT=%s\n' "$SOURCE_SHA"`));
-assert.ok(androidPreview.includes("CodeForge-Android-preview-${{ github.event.pull_request.head.sha || github.sha }}"));
+assert.ok(androidPreview.includes("name: NOT-PRODUCTION-ELIGIBLE-DIAGNOSTIC-Android-Preview-${{ github.event.pull_request.head.sha || github.sha }}"));
 assert.ok(androidPreview.includes("APK-METADATA.txt"));
 assert.ok(androidPreview.includes("ANDROID-SIGNING-VERIFICATION.txt"));
 assert.ok(!androidPreview.includes("GITHUB_SHA"));
@@ -244,6 +309,24 @@ assert.match(installers, /name: Install and launch production-signed APK in disp
 assert.match(installers, /reactivecircus\/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d/);
 assert.ok(installers.includes('script: bash scripts/android-install-smoke.sh release/CodeForge.apk'), 'The final signed Android APK must pass the hosted WebView readiness smoke test.');
 assert.match(installers, /on:\s*push:\s*branches: \[main\]/, 'Every update pushed to main must trigger the paired installer build pipeline.');
+
+const windowsProductionJob = installers.slice(installers.indexOf('  windows:'), installers.indexOf('  android:'));
+const androidProductionJob = installers.slice(installers.indexOf('  android:'));
+assert.match(androidProductionJob, /name: Verify exact source revision/, 'The production Android job must assert the exact main source SHA.');
+assert.ok(androidProductionJob.includes('EXPECTED_SHA: ${{ github.sha }}'), 'The Android source SHA assertion must use the triggering commit SHA.');
+assert.ok(androidProductionJob.includes('test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"'), 'The Android build must fail closed on a checkout SHA mismatch.');
+assert.match(windowsProductionJob, /name: Set monotonic Windows app version/, 'The production Windows bundle must receive a monotonic version before building.');
+for (const path of ['apps/desktop/src-tauri/tauri.conf.json', 'apps/desktop/src-tauri/Cargo.toml', 'apps/desktop/package.json']) {
+  assert.ok(windowsProductionJob.includes(path), 'The Windows release build must synchronize its app version in ' + path + '.');
+}
+assert.ok(windowsProductionJob.includes('verify-windows-installer-version.mjs'), 'The production Windows installer must validate its actual PE version metadata.');
+assert.match(windowsProductionJob, /name: Install, launch, verify, and uninstall production-signed Windows installer/, 'The exact signed Windows production installer must pass install/launch/uninstall smoke.');
+const windowsSignatureIndex = windowsProductionJob.indexOf('name: Verify and stage SignPath-signed Windows installer');
+const windowsSmokeIndex = windowsProductionJob.indexOf('name: Install, launch, verify, and uninstall production-signed Windows installer');
+const windowsMetadataIndex = windowsProductionJob.indexOf('name: Record Windows build metadata and checksum');
+assert.ok(windowsSignatureIndex >= 0 && windowsSmokeIndex > windowsSignatureIndex && windowsMetadataIndex > windowsSmokeIndex, 'Windows signing, install smoke, and metadata staging must run in that order.');
+assert.ok(publisher.includes('verify-windows-installer-version.mjs'), 'The paired publisher must independently revalidate the downloaded Windows EXE version metadata.');
+assert.ok(windowsVersionVerifier.includes('ProductVersion') && windowsVersionVerifier.includes('FileVersion'), 'Windows version validation must inspect both PE product and file version metadata.');
 
 const expectedPrRef = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 for (const [name, workflow] of [
@@ -399,7 +482,13 @@ assert.ok(native.includes("verify-android-webview.mjs"), "Native-shell CI must r
 assert.ok(releasePolicy.includes("verify-android-webview.mjs"), "Release-policy CI must run the Android WebView readiness contract.");
 assert.ok(releasePolicy.includes("verify-hosted-app.test.mjs"), "Release-policy CI must run hosted-route regression tests.");
 assert.ok(!read("../apps/web/src/styles.css").includes("fonts.googleapis.com"), "The Android-critical stylesheet must not block on Google Fonts.");
-assert.match(home, /VERIFIED SIGNED RELEASE PENDING/);
+assert.ok(home.includes('RELEASE_STATUS_LABEL'), 'The website must derive native status from the paired-release gate.');
+assert.ok(home.includes('<span className="home-kicker">{RELEASE_STATUS_LABEL}</span>'), 'The home-page heading must reflect the current paired-release gate.');
+assert.ok(home.includes('No verified Windows installer is currently available.'), 'The Windows card must not imply an installer is verified when no paired release exists.');
+assert.ok(home.includes('No verified installable Android APK is currently available.'), 'The Android card must not imply an APK is installable when no paired release exists.');
+assert.ok(home.includes('WINDOWS 10 / 11 · {RELEASE_STATUS_LABEL}') && home.includes('ANDROID · {RELEASE_STATUS_LABEL}'), 'Both platform cards must share the same paired-release status.');
+assert.ok(releaseSource.includes('RELEASE_STATUS_LABEL') && releaseSource.includes('NO VERIFIED PAIRED RELEASE'), 'The release module must expose an accurate blocked-state label.');
+assert.ok(!home.includes('SIGNING IN PROGRESS'), 'The website must not imply signing is underway before a paired release is verified.');
 assert.ok(!home.includes('releases/latest/download') && !home.includes('Self-signed installer'));
 assert.ok(home.includes('PUBLISHED_RELEASE_TAG ? <a'), 'The website must link only to a verified release tag.');
 assert.ok(home.includes('/releases/tag/${PUBLISHED_RELEASE_TAG}'), 'The website release link must target the verified tag only.');
