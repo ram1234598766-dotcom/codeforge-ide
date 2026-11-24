@@ -44,6 +44,7 @@ function requireRoutes(routes, field) {
 export async function verifyWorkerRoutingMetadata({
   accountId,
   apiToken,
+  expectedSourceSha,
   workerName = DEFAULT_WORKER_NAME,
   fetchImpl = fetch,
 } = {}) {
@@ -52,6 +53,9 @@ export async function verifyWorkerRoutingMetadata({
   }
   if (typeof apiToken !== 'string' || apiToken.trim() === '') {
     throw new Error('CLOUDFLARE_API_TOKEN is required.');
+  }
+  if (typeof expectedSourceSha !== 'string' || !/^[0-9a-f]{40}$/i.test(expectedSourceSha.trim())) {
+    throw new Error('EXPECTED_SOURCE_SHA must be a full 40-character Git commit SHA.');
   }
   if (typeof workerName !== 'string' || workerName.trim() === '') {
     throw new Error('CLOUDFLARE_WORKER_NAME is required.');
@@ -100,6 +104,15 @@ export async function verifyWorkerRoutingMetadata({
     throw new Error('Cloudflare returned a Worker version different from the active deployment.');
   }
 
+  const expectedMessage = 'CodeForge commit ' + expectedSourceSha.trim();
+  const observedMessages = [
+    latestDeployment.annotations?.['workers/message'],
+    versionResult.annotations?.['workers/message'],
+  ].filter((message) => typeof message === 'string');
+  if (!observedMessages.includes(expectedMessage)) {
+    throw new Error('The active Cloudflare Worker deployment does not identify the expected source commit.');
+  }
+
   const assets = versionResult.resources?.script_runtime?.assets;
   if (!assets) {
     throw new Error('The active Cloudflare Worker version has no static asset routing metadata.');
@@ -118,6 +131,7 @@ export async function verifyWorkerRoutingMetadata({
     deploymentId: latestDeployment.id,
     versionId,
     versionNumber: versionResult.number,
+    sourceSha: expectedSourceSha.trim(),
     createdOn: latestDeployment.created_on,
     requiredRoutes: [...REQUIRED_ROUTES],
     verified: true,
@@ -129,6 +143,7 @@ if (import.meta.url === invokedPath) {
   verifyWorkerRoutingMetadata({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_API_TOKEN,
+    expectedSourceSha: process.env.EXPECTED_SOURCE_SHA,
     workerName: process.env.CLOUDFLARE_WORKER_NAME || DEFAULT_WORKER_NAME,
   })
     .then((result) => {
