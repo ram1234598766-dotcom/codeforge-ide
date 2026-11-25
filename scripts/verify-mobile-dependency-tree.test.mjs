@@ -61,20 +61,20 @@ test('dependency verifier accepts an optional package when the other audited pac
 test('dependency verifier rejects vulnerable glob versions', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.version = '14.0.1';
-  assert.throws(() => verifyDependencyTree(tree), /glob must resolve only to 14\\.0\\.2/);
+  assert.throws(() => verifyDependencyTree(tree), /glob must resolve only to 14\.0\.2/);
 });
 
 test('dependency verifier rejects vulnerable minimatch versions', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.0';
-  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\\.0\\.1/);
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.1/);
 });
 
 test('Android CI enforces the moderate audit threshold and inspects the resolved tree', () => {
   assert.match(nativeWorkflow, /npm audit --audit-level=moderate/);
-  assert.match(nativeWorkflow, /verify-mobile-dependency-tree\\.mjs/);
+  assert.match(nativeWorkflow, /verify-mobile-dependency-tree\.mjs/);
 });
 
 test('release-policy CI runs this dependency regression suite', () => {
-  assert.match(releaseWorkflow, /verify-mobile-dependency-tree\\.test\\.mjs/);
+  assert.match(releaseWorkflow, /verify-mobile-dependency-tree\.test\.mjs/);
 });
