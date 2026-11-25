@@ -22,6 +22,19 @@ const patchedTree = {
   },
 };
 
+const noAffectedPackagesTree = { dependencies: { expo: { version: '58.0.0' } } };
+
+const globOnlyTree = {
+  dependencies: {
+    expo: {
+      version: '58.0.0',
+      dependencies: {
+        glob: { version: requiredVersions.glob },
+      },
+    },
+  },
+};
+
 test('root workspace pins patched glob and minimatch versions', () => {
   assert.equal(rootPackage.overrides?.glob, requiredVersions.glob);
   assert.equal(rootPackage.overrides?.minimatch, requiredVersions.minimatch);
@@ -35,6 +48,14 @@ test('Expo SDK and React Native compatibility versions remain unchanged', () => 
 
 test('dependency verifier accepts a fully patched nested tree', () => {
   assert.doesNotThrow(() => verifyDependencyTree(patchedTree));
+});
+
+test('dependency verifier accepts a tree where neither audited package is installed', () => {
+  assert.deepEqual(verifyDependencyTree(noAffectedPackagesTree), { glob: [], minimatch: [] });
+});
+
+test('dependency verifier accepts an optional package when the other audited package is absent', () => {
+  assert.deepEqual(verifyDependencyTree(globOnlyTree), { glob: [requiredVersions.glob], minimatch: [] });
 });
 
 test('dependency verifier rejects vulnerable glob versions', () => {

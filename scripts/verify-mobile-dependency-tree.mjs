@@ -25,10 +25,12 @@ export function collectDependencyVersions(tree) {
 export function verifyDependencyTree(tree) {
   const found = collectDependencyVersions(tree);
   for (const name of Object.keys(requiredVersions)) {
-    assert.ok(found[name].length > 0, 'No installed ' + name + ' dependency was found.');
+    // These are transitive dependencies, not required application packages.
+    // If one is absent from the resolved tree there is nothing to version-check.
     assert.ok(
       found[name].every(version => version === requiredVersions[name]),
-      name + ' must resolve only to ' + requiredVersions[name] + '; found: ' + found[name].join(', '),
+      name + ' must resolve only to ' + requiredVersions[name] + '; found: '
+        + (found[name].length ? found[name].join(', ') : 'no installed instances'),
     );
   }
   return found;
@@ -41,7 +43,7 @@ if (import.meta.url === invokedPath) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const found = verifyDependencyTree(JSON.parse(output));
-  console.log('Verified patched mobile tooling dependencies: '
-    + 'glob=' + [...new Set(found.glob)].join(',')
-    + '; minimatch=' + [...new Set(found.minimatch)].join(','));
+  console.log('Verified mobile tooling dependency tree: '
+    + 'glob=' + (found.glob.length ? [...new Set(found.glob)].join(',') : 'absent')
+    + '; minimatch=' + (found.minimatch.length ? [...new Set(found.minimatch)].join(',') : 'absent'));
 }
