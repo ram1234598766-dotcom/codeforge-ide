@@ -35,6 +35,13 @@ trap cleanup EXIT
 capture_diagnostics() {
   mkdir -p "$DIAGNOSTICS_DIR"
   write_readiness_evidence
+  local connectivity_dump
+  connectivity_dump="$(adb shell dumpsys connectivity 2>/dev/null | tr -d '\r' || true)"
+  if [[ -n "$connectivity_dump" ]]; then
+    printf '%s\n' "$connectivity_dump" | node scripts/verify-android-connectivity.mjs > "$DIAGNOSTICS_DIR/network.txt" || true
+  else
+    printf 'VALIDATED_NETWORK=false\nNETWORK_REASON=connectivity-dump-unavailable\n' > "$DIAGNOSTICS_DIR/network.txt"
+  fi
   adb shell uiautomator dump /sdcard/codeforge-window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/codeforge-window.xml "$DIAGNOSTICS_DIR/window.xml" >/dev/null 2>&1 || true
   adb shell screencap -p /sdcard/codeforge-screen.png >/dev/null 2>&1 || true
@@ -61,22 +68,22 @@ enable_emulator_network() {
   adb shell svc data enable >/dev/null 2>&1 || true
   adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false >/dev/null 2>&1 || true
 
+  local connectivity_dump=""
   for attempt in $(seq 1 30); do
-    if adb shell dumpsys connectivity 2>/dev/null | grep -Eq 'INTERNET.*VALIDATED|VALIDATED.*INTERNET'; then
-      printf 'VALIDATED_NETWORK=true\n' > "$DIAGNOSTICS_DIR/network.txt"
+    connectivity_dump="$(adb shell dumpsys connectivity 2>/dev/null | tr -d '\r' || true)"
+    if [[ -n "$connectivity_dump" ]] && printf '%s\n' "$connectivity_dump" | node scripts/verify-android-connectivity.mjs > "$DIAGNOSTICS_DIR/network.txt"; then
       return 0
     fi
-    sleep 2
+    if [[ "$attempt" -lt 30 ]]; then
+      sleep 2
+    fi
   done
 
-  {
-    printf 'AIRPLANE_MODE='
-    adb shell settings get global airplane_mode_on | tr -d '\r'
-    printf 'WIFI_ENABLED='
-    adb shell settings get global wifi_on | tr -d '\r'
-    printf 'VALIDATED_NETWORK=false\n'
-  } > "$DIAGNOSTICS_DIR/network.txt"
-  echo "::error::Android emulator has no validated internet network. Hosted WebView verification is NOT VERIFIED; this is an emulator/network prerequisite."
+  if [[ -z "$connectivity_dump" ]]; then
+    printf 'VALIDATED_NETWORK=false\nNETWORK_REASON=connectivity-dump-unavailable\n' > "$DIAGNOSTICS_DIR/network.txt"
+  fi
+  echo "::error::Android emulator has no connected, validated active default internet network. Hosted WebView verification is NOT VERIFIED; this is an emulator/network prerequisite."
+  cat "$DIAGNOSTICS_DIR/network.txt" >&2
   return 1
 }
 

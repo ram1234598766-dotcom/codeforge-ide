@@ -46,13 +46,13 @@ jobs:
         env:
           CONFIRM_D1_MIGRATIONS: ${{ inputs.confirm_d1_migrations }}
         run: test "$CONFIRM_D1_MIGRATIONS" = "APPLY D1 MIGRATIONS"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify exact source revision
         shell: bash
         env:
           EXPECTED_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -103,6 +103,14 @@ jobs:
           SOURCE_SHA: ${{ github.sha }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify deployed Worker routing metadata
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_WORKER_NAME: codeforge-ide
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/verify-worker-routing-metadata.mjs
 
       - name: Verify production hosted CodeForge routes, API guard, and assets
         env:

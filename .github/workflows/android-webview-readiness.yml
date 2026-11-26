@@ -1,0 +1,32 @@
+name: Android WebView readiness tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/android-webview-readiness.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/mobile/**"
+      - ".github/workflows/android-webview-readiness.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  navigation-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.16.0
+      - name: Verify native/WebView React readiness contract
+        run: node scripts/verify-android-webview.mjs
+      - name: Run injected WebView readiness regression tests
+        run: node --test apps/mobile/webview-readiness.test.mjs
+      - name: Run WebView navigation readiness tests
+        run: node --test apps/mobile/webview-navigation.test.mjs
