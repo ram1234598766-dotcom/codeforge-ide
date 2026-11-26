@@ -48,6 +48,7 @@ for (const migrationPath of [
   assert.ok(d1MigrationTest.includes(migrationPath), 'Disposable D1 fixture must exercise ' + migrationPath);
 }
 assert.ok(releasePolicy.includes('scripts/test-d1-migrations.py'), 'Changes to the disposable D1 fixture must trigger migration safety tests.');
+assert.ok(releasePolicy.includes('scripts/verify-cloudflare-preview-isolation.test.mjs'), 'Release policy CI must run Cloudflare preview D1/KV isolation regression tests.');
 assert.ok(d1MigrationTest.includes('test_migrations_are_rerunnable_without_losing_existing_data_or_revision_progress'));
 assert.ok(d1MigrationTest.includes('test_workspace_foreign_keys_cascade_only_the_selected_fixture_workspace'));
 
