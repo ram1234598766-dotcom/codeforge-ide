@@ -2,11 +2,11 @@ export function parseWranglerTables(source) {
   const tables = new Map();
   let current = null;
 
-  for (const rawLine of source.split(/\\r?\\n/)) {
+  for (const rawLine of source.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
 
-    const arrayHeader = line.match(/^\\[\\[([A-Za-z0-9_.-]+)\\]\\]$/);
+    const arrayHeader = line.match(/^\[\[([A-Za-z0-9_.-]+)\]\]$/);
     if (arrayHeader) {
       const entries = tables.get(arrayHeader[1]) ?? [];
       current = {};
@@ -15,7 +15,7 @@ export function parseWranglerTables(source) {
       continue;
     }
 
-    const tableHeader = line.match(/^\\[([A-Za-z0-9_.-]+)\\]$/);
+    const tableHeader = line.match(/^\[([A-Za-z0-9_.-]+)\]$/);
     if (tableHeader) {
       const entries = tables.get(tableHeader[1]) ?? [];
       current = entries[0] ?? {};
@@ -24,7 +24,7 @@ export function parseWranglerTables(source) {
       continue;
     }
 
-    const assignment = line.match(/^([A-Za-z0-9_-]+)\\s*=\\s*(.+)$/);
+    const assignment = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(.+)$/);
     if (!current || !assignment) continue;
 
     const key = assignment[1];
