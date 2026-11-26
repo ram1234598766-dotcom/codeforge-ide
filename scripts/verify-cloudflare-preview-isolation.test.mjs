@@ -26,22 +26,22 @@ test('current Wrangler config isolates preview D1 and KV from production', () =>
 
 test('rejects preview D1 pointing at the production database', () => {
   const fixture = replaceOnce(wrangler, 'database_id = "' + previewD1Id + '"', 'database_id = "' + productionD1Id + '"');
-  assert.match(verifyPreviewIsolation(fixture).join('\\n'), /Preview D1 must not reuse the production database ID/);
+  assert.match(verifyPreviewIsolation(fixture).join('\n'), /Preview D1 must not reuse the production database ID/);
 });
 
 test('rejects preview KV pointing at the production namespace', () => {
   const fixture = replaceOnce(wrangler, 'id = "' + previewKvId + '"', 'id = "' + productionKvId + '"');
-  assert.match(verifyPreviewIsolation(fixture).join('\\n'), /Preview KV must not reuse the production namespace ID/);
+  assert.match(verifyPreviewIsolation(fixture).join('\n'), /Preview KV must not reuse the production namespace ID/);
 });
 
 test('rejects missing preview D1 or KV bindings', () => {
-  const missingD1 = replaceOnce(wrangler, '[previews.d1_databases]\\n', '');
-  const missingKv = replaceOnce(wrangler, '[previews.kv_namespaces]\\n', '');
-  assert.match(verifyPreviewIsolation(missingD1).join('\\n'), /Preview D1 must declare exactly one/);
-  assert.match(verifyPreviewIsolation(missingKv).join('\\n'), /Preview KV must declare exactly one/);
+  const missingD1 = replaceOnce(wrangler, '[previews.d1_databases]\n', '');
+  const missingKv = replaceOnce(wrangler, '[previews.kv_namespaces]\n', '');
+  assert.match(verifyPreviewIsolation(missingD1).join('\n'), /Preview D1 must declare exactly one/);
+  assert.match(verifyPreviewIsolation(missingKv).join('\n'), /Preview KV must declare exactly one/);
 });
 
 test('rejects secrets placed in plaintext Wrangler variables', () => {
-  const fixture = replaceOnce(wrangler, '[previews.vars]\\n', '[previews.vars]\\nAPP_ENCRYPTION_KEY = "fixture-only-not-a-secret"\\n');
-  assert.match(verifyPreviewIsolation(fixture).join('\\n'), /APP_ENCRYPTION_KEY must remain a managed secret/);
+  const fixture = replaceOnce(wrangler, '[previews.vars]\n', '[previews.vars]\nAPP_ENCRYPTION_KEY = "fixture-only-not-a-secret"\n');
+  assert.match(verifyPreviewIsolation(fixture).join('\n'), /APP_ENCRYPTION_KEY must remain a managed secret/);
 });
