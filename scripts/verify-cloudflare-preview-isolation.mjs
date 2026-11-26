@@ -43,19 +43,20 @@ export function parseWranglerTables(source) {
 export function verifyPreviewIsolation(source) {
   const tables = parseWranglerTables(source);
   const errors = [];
-  const one = (name, label) => {
-    const entries = tables.get(name) ?? [];
-    if (entries.length !== 1) {
-      errors.push(label + ' must declare exactly one ' + name + ' table.');
+  const oneBinding = (tableName, bindingName, label) => {
+    const entries = tables.get(tableName) ?? [];
+    const matches = entries.filter((entry) => entry.binding === bindingName);
+    if (matches.length !== 1) {
+      errors.push(label + ' must declare exactly one ' + bindingName + ' binding.');
       return null;
     }
-    return entries[0];
+    return matches[0];
   };
 
-  const productionD1 = one('d1_databases', 'Production D1');
-  const previewD1 = one('previews.d1_databases', 'Preview D1');
-  const productionKv = one('kv_namespaces', 'Production KV');
-  const previewKv = one('previews.kv_namespaces', 'Preview KV');
+  const productionD1 = oneBinding('d1_databases', 'CODEFORGE_DB', 'Production D1');
+  const previewD1 = oneBinding('previews.d1_databases', 'CODEFORGE_DB', 'Preview D1');
+  const productionKv = oneBinding('kv_namespaces', 'CODEFORGE_KV', 'Production KV');
+  const previewKv = oneBinding('previews.kv_namespaces', 'CODEFORGE_KV', 'Preview KV');
 
   if (productionD1 && productionD1.binding !== 'CODEFORGE_DB') {
     errors.push('Production D1 must retain the CODEFORGE_DB binding name.');
