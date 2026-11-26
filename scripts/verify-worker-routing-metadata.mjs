@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const API_BASE_URL = 'https://api.cloudflare.com/client/v4';
@@ -41,11 +42,82 @@ function requireRoutes(routes, field) {
   }
 }
 
+
+export function parseExpectedWorkerBindings(wranglerToml) {
+  if (typeof wranglerToml !== 'string') {
+    throw new Error('The Wrangler configuration must be text.');
+  }
+
+  const blocks = [];
+  let current = null;
+  for (const line of wranglerToml.split(/\r?\n/)) {
+    const arrayHeader = line.match(/^\s*\[\[([^\]]+)\]\]\s*$/);
+    if (arrayHeader) {
+      current = { name: arrayHeader[1], values: {} };
+      blocks.push(current);
+      continue;
+    }
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) {
+      current = null;
+      continue;
+    }
+    if (!current) continue;
+    const value = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*"([^"]*)"\s*(?:#.*)?$/);
+    if (value) current.values[value[1]] = value[2];
+  }
+
+  const d1 = blocks.find((block) => block.name === 'd1_databases'
+    && block.values.binding === 'CODEFORGE_DB');
+  const kv = blocks.find((block) => block.name === 'kv_namespaces'
+    && block.values.binding === 'CODEFORGE_KV');
+
+  if (!d1?.values.database_id || !kv?.values.id) {
+    throw new Error('wrangler.toml must declare the production CODEFORGE_DB and CODEFORGE_KV bindings.');
+  }
+
+  return {
+    d1DatabaseId: d1.values.database_id,
+    kvNamespaceId: kv.values.id,
+  };
+}
+
+export function verifyWorkerBindings(bindings, expectedBindings) {
+  if (!Array.isArray(bindings)) {
+    throw new Error('The active Worker version is missing its D1/KV binding metadata.');
+  }
+  if (!expectedBindings
+    || typeof expectedBindings.d1DatabaseId !== 'string'
+    || typeof expectedBindings.kvNamespaceId !== 'string') {
+    throw new Error('Expected production D1/KV binding identifiers are unavailable.');
+  }
+
+  const d1Matches = bindings.filter((binding) => binding?.name === 'CODEFORGE_DB');
+  if (d1Matches.length !== 1 || d1Matches[0].type !== 'd1') {
+    throw new Error('The active Worker must contain exactly one CODEFORGE_DB D1 binding.');
+  }
+  const actualD1Id = d1Matches[0].database_id ?? d1Matches[0].id;
+  if (actualD1Id !== expectedBindings.d1DatabaseId) {
+    throw new Error('The active CODEFORGE_DB binding does not match wrangler.toml.');
+  }
+
+  const kvMatches = bindings.filter((binding) => binding?.name === 'CODEFORGE_KV');
+  if (kvMatches.length !== 1 || kvMatches[0].type !== 'kv_namespace') {
+    throw new Error('The active Worker must contain exactly one CODEFORGE_KV namespace binding.');
+  }
+  const actualKvId = kvMatches[0].namespace_id ?? kvMatches[0].id;
+  if (actualKvId !== expectedBindings.kvNamespaceId) {
+    throw new Error('The active CODEFORGE_KV binding does not match wrangler.toml.');
+  }
+
+  return ['CODEFORGE_DB', 'CODEFORGE_KV'];
+}
+
 export async function verifyWorkerRoutingMetadata({
   accountId,
   apiToken,
   expectedSourceSha,
   workerName = DEFAULT_WORKER_NAME,
+  expectedBindings,
   fetchImpl = fetch,
 } = {}) {
   if (typeof accountId !== 'string' || accountId.trim() === '') {
@@ -59,6 +131,11 @@ export async function verifyWorkerRoutingMetadata({
   }
   if (typeof workerName !== 'string' || workerName.trim() === '') {
     throw new Error('CLOUDFLARE_WORKER_NAME is required.');
+  }
+
+  if (!expectedBindings || typeof expectedBindings.d1DatabaseId !== 'string'
+    || typeof expectedBindings.kvNamespaceId !== 'string') {
+    throw new Error('Expected production D1/KV bindings must be read from wrangler.toml.');
   }
 
   const account = encodeURIComponent(accountId.trim());
@@ -127,6 +204,8 @@ export async function verifyWorkerRoutingMetadata({
     'script_runtime.assets.raw_run_worker_first',
   );
 
+  const verifiedBindings = verifyWorkerBindings(versionResult.resources?.bindings, expectedBindings);
+
   return {
     deploymentId: latestDeployment.id,
     versionId,
@@ -134,18 +213,24 @@ export async function verifyWorkerRoutingMetadata({
     sourceSha: expectedSourceSha.trim(),
     createdOn: latestDeployment.created_on,
     requiredRoutes: [...REQUIRED_ROUTES],
+    verifiedBindings,
     verified: true,
   };
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
 if (import.meta.url === invokedPath) {
-  verifyWorkerRoutingMetadata({
+  (async () => {
+    const wranglerToml = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
+    const expectedBindings = parseExpectedWorkerBindings(wranglerToml);
+    return verifyWorkerRoutingMetadata({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_API_TOKEN,
     expectedSourceSha: process.env.EXPECTED_SOURCE_SHA,
     workerName: process.env.CLOUDFLARE_WORKER_NAME || DEFAULT_WORKER_NAME,
-  })
+    expectedBindings,
+    });
+  })()
     .then((result) => {
       console.log('Deployed CodeForge Worker routing metadata verified.');
       console.log(JSON.stringify(result, null, 2));
