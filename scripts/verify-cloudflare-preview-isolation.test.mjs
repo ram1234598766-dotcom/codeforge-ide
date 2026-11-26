@@ -35,8 +35,8 @@ test('rejects preview KV pointing at the production namespace', () => {
 });
 
 test('rejects missing preview D1 or KV bindings', () => {
-  const missingD1 = replaceOnce(wrangler, '[previews.d1_databases]\n', '');
-  const missingKv = replaceOnce(wrangler, '[previews.kv_namespaces]\n', '');
+  const missingD1 = replaceOnce(wrangler, '[previews.d1_databases]', '');
+  const missingKv = replaceOnce(wrangler, '[previews.kv_namespaces]', '');
   assert.match(verifyPreviewIsolation(missingD1).join('\n'), /Preview D1 must declare exactly one/);
   assert.match(verifyPreviewIsolation(missingKv).join('\n'), /Preview KV must declare exactly one/);
 });
