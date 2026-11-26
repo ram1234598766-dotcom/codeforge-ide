@@ -24,6 +24,13 @@ test('current Wrangler config isolates preview D1 and KV from production', () =>
   assert.notEqual(productionKvId, previewKvId);
 });
 
+test('allows unrelated D1 and KV bindings while preserving CodeForge isolation', () => {
+  const fixture = wrangler
+    + '\n[[d1_databases]]\nbinding = "ANALYTICS_DB"\ndatabase_name = "analytics"\ndatabase_id = "fixture-analytics-db"\n'
+    + '\n[[kv_namespaces]]\nbinding = "CACHE_KV"\nid = "fixture-cache-kv"\n';
+  assert.deepEqual(verifyPreviewIsolation(fixture), []);
+});
+
 test('rejects preview D1 pointing at the production database', () => {
   const fixture = replaceOnce(wrangler, 'database_id = "' + previewD1Id + '"', 'database_id = "' + productionD1Id + '"');
   assert.match(verifyPreviewIsolation(fixture).join('\n'), /Preview D1 must not reuse the production database ID/);
