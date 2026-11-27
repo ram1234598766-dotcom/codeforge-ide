@@ -46,7 +46,7 @@ test('root workspace pins patched glob and minimatch versions', () => {
 });
 
 test('Expo SDK and React Native compatibility versions remain unchanged', () => {
-  assert.equal(mobilePackage.dependencies.expo, '~58.0.0');
+  assert.equal(mobilePackage.dependencies.expo, '~58.1.0');
   assert.equal(mobilePackage.dependencies['react-native'], '0.88.1');
   assert.equal(mobilePackage.dependencies.react, '19.3.0');
 });
