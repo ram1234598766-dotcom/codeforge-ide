@@ -6,6 +6,8 @@ on:
       - "package.json"
       - "scripts/verify-mobile-dependency-tree.mjs"
       - "scripts/verify-mobile-dependency-tree.test.mjs"
+      - "scripts/verify-cloudflare-preview-isolation.mjs"
+      - "scripts/verify-cloudflare-preview-isolation.test.mjs"
       - "apps/web/src/main.tsx"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
@@ -38,6 +40,8 @@ on:
       - "package.json"
       - "scripts/verify-mobile-dependency-tree.mjs"
       - "scripts/verify-mobile-dependency-tree.test.mjs"
+      - "scripts/verify-cloudflare-preview-isolation.mjs"
+      - "scripts/verify-cloudflare-preview-isolation.test.mjs"
       - "apps/web/src/main.tsx"
       - "apps/web/src/lib/release.ts"
       - ".github/workflows/production-installers.yml"
@@ -86,6 +90,8 @@ jobs:
       - name: Parse GitHub Actions workflow YAML
         run: |
           ruby -e 'require "yaml"; Dir[".github/workflows/*.yml"].each { |path| YAML.load_file(path, aliases: true); puts "valid YAML: #{path}" }'
+      - name: Test Cloudflare preview D1/KV isolation
+        run: node --test scripts/verify-cloudflare-preview-isolation.test.mjs
       - name: Test mobile dependency override policy
         run: node --test scripts/verify-mobile-dependency-tree.test.mjs
       - name: Test D1 migrations on a disposable SQLite fixture
