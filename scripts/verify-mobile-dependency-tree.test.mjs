@@ -70,7 +70,7 @@ test('dependency verifier accepts minimatch when optional glob is absent', () =>
 test('dependency verifier rejects vulnerable glob versions', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.version = '14.0.1';
-  assert.throws(() => verifyDependencyTree(tree), /glob must resolve only to 14\.0\.2/);
+  assert.throws(() => verifyDependencyTree(tree), /glob must resolve only to 14\.0\.6/);
 });
 
 test('dependency verifier rejects minimatch versions below the current security pin', () => {
