@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 export const requiredVersions = Object.freeze({
-  glob: '14.0.2',
+  glob: '14.0.6',
   minimatch: '11.0.8',
 });
 
