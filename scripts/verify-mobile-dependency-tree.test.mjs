@@ -101,9 +101,11 @@ test('Android preview APK uses the same pinned dependency verification path as n
   assert.doesNotMatch(androidPreviewWorkflow, /--package-lock=false/);
 });
 
-test('Native CI stages the generated mobile dependency lockfile for review', () => {
-  assert.match(nativeWorkflow, /Stage mobile dependency lockfile for review/);
-  assert.match(nativeWorkflow, /MOBILE-PACKAGE-LOCK\.json/);
+test('Native CI stages the generated npm workspace lockfile for review', () => {
+  assert.match(nativeWorkflow, /Stage generated npm workspace lockfile for review/);
+  assert.match(nativeWorkflow, /package-lock\.json/);
+  assert.match(nativeWorkflow, /MOBILE-WORKSPACE-PACKAGE-LOCK\.json/);
+  assert.match(nativeWorkflow, /npm did not generate a workspace or mobile package lockfile/);
 });
 
 test('release-policy CI runs this dependency regression suite', () => {
