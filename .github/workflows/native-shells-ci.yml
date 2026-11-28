@@ -46,6 +46,21 @@ jobs:
       - name: Install Expo dependencies and create lockfile
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=true
+      - name: Stage generated npm workspace lockfile for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          if [[ -s package-lock.json ]]; then
+            lockfile_path="package-lock.json"
+          elif [[ -s apps/mobile/package-lock.json ]]; then
+            lockfile_path="apps/mobile/package-lock.json"
+          else
+            echo "::error::npm did not generate a workspace or mobile package lockfile"
+            exit 1
+          fi
+          cp "$lockfile_path" release/MOBILE-WORKSPACE-PACKAGE-LOCK.json
+          printf 'Staged generated lockfile from %s\n' "$lockfile_path"
       - name: Verify patched glob and minimatch versions
         working-directory: apps/mobile
         run: node ../../scripts/verify-mobile-dependency-tree.mjs

@@ -41,6 +41,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/mobile/package.json
+      - name: Pin npm to 11.19.0 for peer-graph stability
+        run: npm install --global npm@11.19.0
+
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -55,7 +58,19 @@ jobs:
 
       - name: Install Expo dependencies
         working-directory: apps/mobile
-        run: npm install --no-audit --no-fund --package-lock=false
+        run: npm install --no-audit --no-fund --package-lock=true
+
+      - name: Verify patched glob and minimatch versions
+        working-directory: apps/mobile
+        run: node ../../scripts/verify-mobile-dependency-tree.mjs
+
+      - name: Audit Android client dependencies
+        working-directory: apps/mobile
+        run: npm audit --audit-level=moderate
+
+      - name: Expo diagnostics
+        working-directory: apps/mobile
+        run: npx expo-doctor
 
       - name: Generate native Android project
         working-directory: apps/mobile
@@ -69,7 +84,7 @@ jobs:
           EXPO_NO_TELEMETRY: "1"
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace --refresh-dependencies :app:assembleRelease
 
       - name: Align, sign, and verify APK
         shell: bash
