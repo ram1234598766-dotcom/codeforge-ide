@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rootPackage = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
 const mobilePackage = JSON.parse(readFileSync(path.join(root, 'apps/mobile/package.json'), 'utf8'));
 const nativeWorkflow = readFileSync(path.join(root, '.github/workflows/native-shells-ci.yml'), 'utf8');
+const androidPreviewWorkflow = readFileSync(path.join(root, '.github/workflows/android-apk.yml'), 'utf8');
 const releaseWorkflow = readFileSync(path.join(root, '.github/workflows/release-policy.yml'), 'utf8');
 
 const patchedTree = {
@@ -88,6 +89,21 @@ test('dependency verifier rejects a stale minimatch pin below the current patche
 test('Android CI enforces the moderate audit threshold and inspects the resolved tree', () => {
   assert.match(nativeWorkflow, /npm audit --audit-level=moderate/);
   assert.match(nativeWorkflow, /verify-mobile-dependency-tree\.mjs/);
+});
+
+test('Android preview APK uses the same pinned dependency verification path as native CI', () => {
+  assert.match(androidPreviewWorkflow, /npm install --global npm@11\.19\.0/);
+  assert.match(androidPreviewWorkflow, /npm install --no-audit --no-fund --package-lock=true/);
+  assert.match(androidPreviewWorkflow, /verify-mobile-dependency-tree\.mjs/);
+  assert.match(androidPreviewWorkflow, /npm audit --audit-level=moderate/);
+  assert.match(androidPreviewWorkflow, /npx expo-doctor/);
+  assert.match(androidPreviewWorkflow, /--refresh-dependencies/);
+  assert.doesNotMatch(androidPreviewWorkflow, /--package-lock=false/);
+});
+
+test('Native CI stages the generated mobile dependency lockfile for review', () => {
+  assert.match(nativeWorkflow, /Stage mobile dependency lockfile for review/);
+  assert.match(nativeWorkflow, /MOBILE-PACKAGE-LOCK\.json/);
 });
 
 test('release-policy CI runs this dependency regression suite', () => {

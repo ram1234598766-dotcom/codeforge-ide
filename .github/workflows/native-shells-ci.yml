@@ -46,6 +46,12 @@ jobs:
       - name: Install Expo dependencies and create lockfile
         working-directory: apps/mobile
         run: npm install --no-audit --no-fund --package-lock=true
+      - name: Stage mobile dependency lockfile for review
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp apps/mobile/package-lock.json release/MOBILE-PACKAGE-LOCK.json
       - name: Verify patched glob and minimatch versions
         working-directory: apps/mobile
         run: node ../../scripts/verify-mobile-dependency-tree.mjs
