@@ -14,7 +14,7 @@ const releaseWorkflow = readFileSync(path.join(root, '.github/workflows/release-
 const patchedTree = {
   dependencies: {
     expo: {
-      version: '58.0.0',
+      version: '58.1.0',
       dependencies: {
         glob: { version: requiredVersions.glob, dependencies: { minimatch: { version: requiredVersions.minimatch } } },
       },
@@ -22,11 +22,11 @@ const patchedTree = {
   },
 };
 
-const noAffectedPackagesTree = { dependencies: { expo: { version: '58.0.0' } } };
+const noAffectedPackagesTree = { dependencies: { expo: { version: '58.1.0' } } };
 const globOnlyTree = {
   dependencies: {
     expo: {
-      version: '58.0.0',
+      version: '58.1.0',
       dependencies: { glob: { version: requiredVersions.glob } },
     },
   },
@@ -34,7 +34,7 @@ const globOnlyTree = {
 const minimatchOnlyTree = {
   dependencies: {
     expo: {
-      version: '58.0.0',
+      version: '58.1.0',
       dependencies: { minimatch: { version: requiredVersions.minimatch } },
     },
   },
@@ -75,8 +75,14 @@ test('dependency verifier rejects vulnerable glob versions', () => {
 
 test('dependency verifier rejects minimatch versions below the current security pin', () => {
   const tree = structuredClone(patchedTree);
-  tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.6';
-  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.8/);
+  tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.7';
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\\.0\\.9/);
+});
+
+test('dependency verifier rejects a stale minimatch pin below the current patched release', () => {
+  const tree = structuredClone(patchedTree);
+  tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.8';
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\\.0\\.9/);
 });
 
 test('Android CI enforces the moderate audit threshold and inspects the resolved tree', () => {
