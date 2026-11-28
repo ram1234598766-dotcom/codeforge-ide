@@ -76,13 +76,13 @@ test('dependency verifier rejects vulnerable glob versions', () => {
 test('dependency verifier rejects minimatch versions below the current security pin', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.7';
-  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\\.0\\.9/);
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.9/);
 });
 
 test('dependency verifier rejects a stale minimatch pin below the current patched release', () => {
   const tree = structuredClone(patchedTree);
   tree.dependencies.expo.dependencies.glob.dependencies.minimatch.version = '11.0.8';
-  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\\.0\\.9/);
+  assert.throws(() => verifyDependencyTree(tree), /minimatch must resolve only to 11\.0\.9/);
 });
 
 test('Android CI enforces the moderate audit threshold and inspects the resolved tree', () => {
